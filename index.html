@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RetirePlan — How much can I spend in retirement?</title>
+<meta name="description" content="Client-only retirement calculator with phased contributions and inflation-adjusted spending.">
+<link rel="stylesheet" href="style.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌅</text></svg>">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo">🌅</span><div><strong>RetirePlan</strong><small>Phased-contribution retirement calculator</small></div></div>
+  <div class="top-actions">
+    <button id="shareBtn" class="btn ghost" type="button">🔗 Copy share link</button>
+    <button id="resetBtn" class="btn ghost" type="button">↺ Reset example</button>
+  </div>
+</header>
+
+<div class="hero">
+  <h1>Contribute for a while. Coast. Then spend — sustainably.</h1>
+  <p>Your contributions don't have to run until retirement day. Model exactly that: save hard for a few years, let the pot compound, then see what inflation-proof monthly spending it can fund.</p>
+  <div class="timeline" id="timeline" aria-label="Your timeline"></div>
+</div>
+
+<main class="layout">
+  <form id="form" class="panel inputs" autocomplete="off">
+    <h2>Your plan</h2>
+
+    <fieldset>
+      <legend>Where you stand</legend>
+      <label class="field"><span>Current savings</span>
+        <div class="money"><i>$</i><input id="currentSavings" type="number" min="0" step="1000" value="1000000"></div>
+      </label>
+      <label class="field"><span>Target retirement year</span>
+        <input id="retireYear" type="number" step="1">
+        <small class="hint" id="yearsHint"></small>
+      </label>
+    </fieldset>
+
+    <fieldset class="highlight">
+      <legend>⏱ Contribution phase — the unique bit</legend>
+      <label class="field"><span>Monthly contribution</span>
+        <div class="money"><i>$</i><input id="monthlyContribution" type="number" min="0" step="100" value="4000"></div>
+      </label>
+      <label class="field"><span>Contribute for (years)</span>
+        <div class="slider-row"><input id="contribYears" type="range" min="0" max="40" step="0.5" value="5"><output id="contribYearsOut">5 yrs</output></div>
+        <small class="hint">After this, contributions stop and the pot coasts until retirement. Set equal to “years to retirement” to contribute all the way.</small>
+      </label>
+      <label class="field"><span>Contribution increase / year <em>(optional)</em></span>
+        <div class="pct"><input id="contribGrowth" type="number" step="0.1" value="0"><i>%</i></div>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>Assumptions</legend>
+      <div class="presets" role="group" aria-label="Growth presets">
+        <button type="button" data-preset="3,2">Conservative 3%</button>
+        <button type="button" data-preset="5,3.5">Balanced 5%</button>
+        <button type="button" data-preset="7,4.5" class="active">Growth 7%</button>
+        <button type="button" data-preset="9,5">Optimistic 9%</button>
+      </div>
+      <label class="field"><span>Investment growth before retirement</span>
+        <div class="pct"><input id="returnBefore" type="number" step="0.1" value="7"><i>% / yr</i></div>
+      </label>
+      <label class="field"><span>Growth in retirement <em>(usually lower)</em></span>
+        <div class="pct"><input id="returnAfter" type="number" step="0.1" value="4.5"><i>% / yr</i></div>
+      </label>
+      <label class="field"><span>Inflation</span>
+        <div class="pct"><input id="inflation" type="number" step="0.1" value="2.5"><i>% / yr</i></div>
+      </label>
+      <label class="field"><span>Years spent in retirement</span>
+        <div class="slider-row"><input id="retireYears" type="range" min="5" max="50" step="1" value="30"><output id="retireYearsOut">30 yrs</output></div>
+      </label>
+    </fieldset>
+
+    <fieldset>
+      <legend>In retirement <em>(optional)</em></legend>
+      <label class="field"><span>Other income at retirement — pension / Social Security <em>(today's $/mo, inflation-indexed)</em></span>
+        <div class="money"><i>$</i><input id="otherIncome" type="number" min="0" step="100" value="0"></div>
+      </label>
+      <label class="field"><span>Spending you'd like <em>(today's $/mo — to check if it lasts)</em></span>
+        <div class="money"><i>$</i><input id="desiredSpend" type="number" min="0" step="100" placeholder="Leave blank — we'll solve for you"></div>
+      </label>
+    </fieldset>
+    <p class="warn" id="warn" hidden></p>
+    <p class="fineprint">Assumes contributions &amp; spending at the start of each month, monthly compounding, constant returns/inflation. Gross of tax &amp; fees — illustration, not financial advice. Everything runs in your browser; nothing is sent anywhere.</p>
+  </form>
+
+  <section class="results">
+    <div class="verdict card" aria-live="polite">
+      <p class="eyebrow">You could spend, inflation-adjusted, for <span id="vYears"></span> years</p>
+      <p class="big"><span id="spendMonth">—</span><small> / month</small></p>
+      <p class="sub"><span id="spendYear">—</span>/yr in <strong>today's dollars</strong> · first retirement year actually pays <span id="spendFirst">—</span>/mo (future $)</p>
+      <div class="verdict-grid">
+        <div><span>Portfolio must fund</span><strong id="portfolioSpend">—</strong><small>/mo today-$</small></div>
+        <div><span>+ other income</span><strong id="otherSpend">—</strong><small>/mo today-$</small></div>
+        <div><span>Implied withdrawal rate</span><strong id="swr">—</strong><small>of pot at retirement</small></div>
+      </div>
+      <p class="desired" id="desiredOut" hidden></p>
+    </div>
+
+    <div class="card scenarios">
+      <h2>What if returns differ?</h2>
+      <div class="scen-grid">
+        <div><span>Returns −2%/yr</span><strong id="scenLow">—</strong><small>/mo today-$</small></div>
+        <div class="base"><span>Your assumptions</span><strong id="scenBase">—</strong><small>/mo today-$</small></div>
+        <div><span>Returns +2%/yr</span><strong id="scenHigh">—</strong><small>/mo today-$</small></div>
+      </div>
+      <p class="fineprint">Both growth rates shifted together; inflation unchanged. A plan that only works at +2% is fragile.</p>
+    </div>
+
+    <div class="stat-grid">
+      <div class="card stat"><span>Pot at retirement</span><strong id="potFuture">—</strong><small id="potToday"></small></div>
+      <div class="card stat"><span>You put in (total)</span><strong id="putIn">—</strong><small id="putInDetail"></small></div>
+      <div class="card stat"><span>Growth does the rest</span><strong id="growthEarned">—</strong><small>by retirement day</small></div>
+      <div class="card stat"><span>Inflation bite</span><strong id="inflBite">—</strong><small id="inflBiteDetail"></small></div>
+    </div>
+
+    <div class="card chart-card">
+      <div class="chart-head"><h2>Balance over time</h2>
+        <div class="toggle" role="group" aria-label="Dollars basis">
+          <button type="button" id="basisToday" class="active">Today's $</button><button type="button" id="basisNominal">Future $</button>
+        </div>
+      </div>
+      <div class="chart-wrap"><canvas id="chart" role="img" aria-label="Line chart of portfolio balance from today through retirement spending"></canvas><div id="tooltip" class="tooltip" hidden></div></div>
+      <div class="legend"><span><i class="sw accum"></i>Saving / coasting</span><span><i class="sw draw"></i>Spending</span><span><i class="sw contrib"></i>Contributed (cumulative)</span></div>
+    </div>
+
+    <div class="card">
+      <h2>Year by year</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Year</th><th>Phase</th><th>Start</th><th>Contributed</th><th>Growth</th><th>Spent</th><th>End</th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table></div>
+      <p class="fineprint">Annual figures in future (nominal) dollars, aggregated from the monthly simulation. Spending rises with inflation each year to keep its purchasing power flat.</p>
+    </div>
+  </section>
+</main>
+<footer>Runs 100% client-side · Your inputs persist only in this browser (localStorage) and in share links you create.</footer>
+<script src="app.js"></script>
+</body>
+</html>
