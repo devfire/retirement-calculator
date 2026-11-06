@@ -98,6 +98,15 @@ lever, so the difference lands on current savings instead — the preview
 shows which field will change. If one input alone already funds more than a
 lowered target even at $0, the hint says so.)
 
+Pressing Back-fill also **locks the solve**: afterwards, changing any
+assumption (growth presets, returns, inflation, retirement length, cushion,
+…) immediately re-solves the same input so the desired spending stays
+funded — the hint shows a 🔒 note while locked. Manually editing current
+savings, monthly contributions, or “Spending you'd like” unlocks it; press
+Back-fill again to re-solve (e.g. for a new target, which is never
+auto-applied while typing, since partial values like `9`, `90`, `900`
+would thrash the inputs).
+
 If other income alone covers your desired spending, the pot is reported as
 untouched.
 

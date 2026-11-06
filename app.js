@@ -7,7 +7,7 @@ const fmt2 = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maxi
 const compact = v => "$" + Intl.NumberFormat("en-US",{notation:"compact",maximumFractionDigits:1}).format(v);
 const mRate = annualPct => Math.pow(1 + annualPct/100, 1/12) - 1; // effective monthly
 
-let basis = "today", chartData = null, lastBackfill = null, backfillMode = "monthly";
+let basis = "today", chartData = null, lastBackfill = null, backfillMode = "monthly", stickySolve = false, resolving = false;
 
 function readInputs(){
   const v = {};
@@ -197,6 +197,20 @@ function render(){
   // Button never disables or relabels: adjusting the target up or down and re-pressing is the
   // intended workflow, so it stays armed while a portfolio-funded desired spend is entered.
   lastBackfill = backfillPlan(R, backfillMode);
+  // Sticky solve: once Back-fill has been pressed, changing assumptions (presets, returns,
+  // inflation, …) re-solves the same lever immediately instead of letting the plan drift off
+  // the desired spend until the button is pressed again. Manual edits to the lever inputs or
+  // the target itself unlock it (see the form input handler). `resolving` caps recursion at 1:
+  // after applying, the plan equals the current inputs, so the nested render is a no-op here.
+  if (stickySolve && lastBackfill && !resolving &&
+      (lastBackfill.currentSavings !== R.san.currentSavings || lastBackfill.monthlyContribution !== R.san.monthlyContribution)){
+    resolving = true;
+    $("currentSavings").value = lastBackfill.currentSavings;
+    $("monthlyContribution").value = lastBackfill.monthlyContribution;
+    resolving = false;
+    render();
+    return;
+  }
   const showBackfill = Number.isFinite(v.desiredSpend) && !!R.gap && R.gap.needToday > 0;
   $("backfillRow").hidden = !showBackfill;
   $("backfillMonthly").classList.toggle("active", backfillMode === "monthly");
@@ -215,6 +229,7 @@ function render(){
         if (funded > v.desiredSpend + 1) $("backfillHint").textContent += ` Even at $0 it still funds ${fmt.format(funded)}/mo — the other input alone covers more than this target.`;
       }
     }
+    if (stickySolve) $("backfillHint").textContent = `🔒 Solve locked — ${(backfillMode === "savings" || R.contribMonths <= 0) ? "current savings" : "monthly contributions"} re-adjust automatically to keep ${fmt.format(v.desiredSpend)}/mo funded when assumptions change. Edit current savings, monthly contributions, or the target to unlock.`;
   }
 
 
@@ -279,8 +294,8 @@ $("shareBtn").onclick = async () => {
   catch{ prompt("Copy your share link:", url); }
   setTimeout(() => $("shareBtn").textContent = "🔗 Copy share link", 1800);
 };
-$("resetBtn").onclick = () => { localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:4000, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; render(); };
-$("backfillBtn").onclick = () => { if (!lastBackfill) return; $("currentSavings").value = lastBackfill.currentSavings; $("monthlyContribution").value = lastBackfill.monthlyContribution; render(); };
+$("resetBtn").onclick = () => { stickySolve = false; localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:4000, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; render(); };
+$("backfillBtn").onclick = () => { if (!lastBackfill) return; stickySolve = true; $("currentSavings").value = lastBackfill.currentSavings; $("monthlyContribution").value = lastBackfill.monthlyContribution; render(); };
 $("backfillMonthly").onclick = () => { backfillMode = "monthly"; render(); };
 $("backfillSavings").onclick = () => { backfillMode = "savings"; render(); };
 document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
@@ -288,6 +303,6 @@ document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
   const [a, c] = b.dataset.preset.split(","); $("returnBefore").value = a; $("returnAfter").value = c; render();
 });
 $("returnBefore").addEventListener("input", () => document.querySelectorAll("[data-preset]").forEach(x=>x.classList.remove("active")));
-$("form").addEventListener("input", render);
+$("form").addEventListener("input", e => { if (["currentSavings","monthlyContribution","desiredSpend"].includes(e.target.id)) stickySolve = false; render(); });
 addEventListener("resize", drawChart);
 load(); render();
