@@ -76,8 +76,12 @@
 
     <fieldset>
       <legend>In retirement <em>(optional)</em></legend>
-      <label class="field"><span>Other income at retirement — pension / Social Security <em>(today's $/mo, inflation-indexed)</em></span>
+      <label class="field"><span>Other income — pension / Social Security <em>(today's $/mo, inflation-indexed)</em></span>
         <div class="money"><i>$</i><input id="otherIncome" type="number" min="0" step="100" value="0"></div>
+      </label>
+      <label class="field"><span>Other income starts in year <em>(optional — for Social Security, birth year + claiming age, e.g. 1970 + 67 = 2037)</em></span>
+        <input id="otherIncomeStartYear" type="number" step="1" placeholder="At retirement">
+        <small class="hint" id="otherIncomeStartHint"></small>
       </label>
       <label class="field"><span>Desired amount to be left at the end <em>(today's $ — cushion after the final retirement year)</em></span>
         <div class="money"><i>$</i><input id="desiredEndAmount" type="number" min="0" step="1000" value="0"></div>
@@ -106,8 +110,8 @@
       <p class="big"><span id="spendMonth">—</span><small> / month</small></p>
       <p class="sub"><span id="spendYear">—</span>/yr in <strong>today's dollars</strong> · first retirement year actually pays <span id="spendFirst">—</span>/mo (future $)</p>
       <div class="verdict-grid">
-        <div><span>Portfolio must fund</span><strong id="portfolioSpend">—</strong><small>/mo today-$</small></div>
-        <div><span>+ other income</span><strong id="otherSpend">—</strong><small>/mo today-$</small></div>
+        <div><span>Portfolio must fund</span><strong id="portfolioSpend">—</strong><small id="portfolioSpendNote">/mo today-$</small></div>
+        <div><span>+ other income</span><strong id="otherSpend">—</strong><small id="otherSpendNote">/mo today-$</small></div>
         <div><span>Implied withdrawal rate</span><strong id="swr">—</strong><small>of pot at retirement</small></div>
       </div>
       <p class="desired" id="desiredOut" hidden></p>

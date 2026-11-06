@@ -53,6 +53,7 @@ inflation, retirement in 10 years):
 | Inflation | Used to restate everything in today's purchasing power |
 | Years spent in retirement | How long the pot must last; spending is solved to end at ~$0 exactly then |
 | Other income at retirement | Pension / Social Security, in today's $/mo, assumed inflation-indexed (see note below) |
+| Other income starts in year | Optional. When that pension / Social Security actually begins — for Social Security, birth year + claiming age (e.g. 1970 + 67 = 2037). Blank = at retirement. Until it starts, the portfolio funds *all* spending (the bridge); afterwards it only tops income up to the spending level |
 | Spending you'd like | Optional check: "how long would $X/mo actually last?" plus a gap solver (below) |
 | Desired amount to be left at the end | Optional cushion in today's $ left after the final retirement year (default $0). Sustainable spending, the desired-spending gap solver/back-fill, and longevity are solved to preserve it; the chart/table then end at its inflated future-$ value |
 
@@ -112,12 +113,22 @@ untouched.
 
 ### Note on "Other income"
 
-Other income **adds to total spendable income**, it does not change the pot:
-headline spending = portfolio-funded spending + other income. Consequently
-the pot-at-retirement, chart, and year-by-year "Spent" column (which track
-*portfolio withdrawals only*) do not move when you change it — the headline
-total, the "+ other income" tile, and the desired-spending check do. That is
-by design: a pension is spent alongside the portfolio, not deposited into it.
+Other income **adds to total spendable income**; it is spent alongside the
+portfolio, not deposited into it, so the pot at retirement never moves when
+you change it. With income starting at retirement, the portfolio-funded
+spending is unchanged too (the headline total simply rises by the income).
+With a delayed start, the portfolio withdrawal profile — and therefore the
+chart and the year-by-year "Spent" column — *does* change: withdrawals are
+higher during the bridge years and lower once the income begins.
+
+Timing matters, though. Income is **not** assumed to start at retirement
+unless you leave the start year blank: set "Other income starts in year"
+(Social Security claiming year = birth year + claiming age) and the
+sustainable-spending solve changes shape — the portfolio must fund the
+*entire* spending level until that year, then only spending minus the
+income afterwards. Delaying Social Security therefore lowers the level
+spending the pot can sustain, because of the bridge years, even though the
+income amount itself is unchanged.
 
 ## Method
 
@@ -130,6 +141,9 @@ by design: a pension is spent alongside the portfolio, not deposited into it.
   indexes each withdrawal by inflation from today and ends at ~\$0, or at the
   inflated value of "Desired amount to be left at the end" if one is set (its
   present value at retirement, cushion $/(1+r_{real})^{N}$, is reserved before solving spending).
+  With delayed other income, the portfolio withdrawal is the full level
+  spend during the bridge months and level-minus-income afterwards, and the
+  same piecewise profile is inverted for the desired-spending gap solver.
 - Everything is reported in **today's dollars** unless labelled "future $":
   future amounts are divided by $(1+\text{inflation})^{\text{years}}$.
 - Inputs are clamped to sane ranges (returns −50%…30%, inflation −10%…30%,
@@ -160,7 +174,6 @@ by design: a pension is spent alongside the portfolio, not deposited into it.
 ## Limitations
 
 Constant assumed returns and inflation (no market volatility/sequence risk,
-no Monte Carlo), no taxes, fees, or account types, no Social Security
-claiming-age modelling, and other income is assumed to start at retirement
-and keep pace with inflation. An illustration for planning — **not financial
-advice.**
+no Monte Carlo), no taxes, fees, or account types, and other income is
+assumed inflation-indexed from its start year. An illustration for planning
+— **not financial advice.**

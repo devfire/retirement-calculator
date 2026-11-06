@@ -1,6 +1,6 @@
 "use strict";
 const $ = id => document.getElementById(id);
-const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribYears","contribGrowth","returnBefore","returnAfter","inflation","retireYears","otherIncome","desiredEndAmount","desiredSpend"];
+const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribYears","contribGrowth","returnBefore","returnAfter","inflation","retireYears","otherIncome","otherIncomeStartYear","desiredEndAmount","desiredSpend"];
 const nowYear = new Date().getFullYear();
 const fmt = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
 const fmt2 = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2});
@@ -22,7 +22,7 @@ function compute(raw){
   const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
   const v = { ...raw,
     currentSavings: Math.max(0, num(raw.currentSavings)), monthlyContribution: Math.max(0, num(raw.monthlyContribution)),
-    otherIncome: Math.max(0, num(raw.otherIncome)), desiredEndAmount: Math.max(0, num(raw.desiredEndAmount)), desiredSpend: raw.desiredSpend,
+    otherIncome: Math.max(0, num(raw.otherIncome)), otherIncomeStartYear: Number.isFinite(raw.otherIncomeStartYear) ? Math.round(raw.otherIncomeStartYear) : NaN, desiredEndAmount: Math.max(0, num(raw.desiredEndAmount)), desiredSpend: raw.desiredSpend,
     retireYear: Math.round(num(raw.retireYear, nowYear)), retireYears: clamp(num(raw.retireYears), 0, 60),
     contribYears: clamp(num(raw.contribYears), 0, 60), contribGrowth: clamp(num(raw.contribGrowth), -20, 50),
     returnBefore: clamp(num(raw.returnBefore), -50, 30), returnAfter: clamp(num(raw.returnAfter), -50, 30),
@@ -62,37 +62,54 @@ function compute(raw){
   // Sustainable level real spending from the pot (annuity-due in real terms), reserving the
   // desired end cushion: PV at retirement of the cushion (today-$ at end of retirement) is
   // cushionToday / (1+rReal)^N, so only the remainder of the pot funds spending.
+  // Other income may start after retirement (e.g. Social Security claimed later): until it
+  // starts the portfolio funds ALL spending (the bridge), afterwards only spending − income.
   const N = Math.round((v.retireYears||0) * 12);
   const rReal = (1 + rA) / (1 + inf) - 1;
   const cushionToday = v.desiredEndAmount||0;
   const cushionPVToday = N > 0 ? cushionToday * Math.pow(1 + rReal, -N) : 0;
   const cushionFuture = cushionToday * Math.pow(1 + inflAnnual, yrs + (v.retireYears||0)); // nominal $ at end
   const spendableToday = Math.max(0, potToday - cushionPVToday);
-  let portfolioSpendToday; // per month, today's dollars
-  if (N <= 0) portfolioSpendToday = 0;
-  else if (Math.abs(rReal) < 1e-12) portfolioSpendToday = spendableToday / N;
-  else portfolioSpendToday = spendableToday * rReal / ((1 + rReal) * (1 - Math.pow(1 + rReal, -N)));
-  const totalSpendToday = portfolioSpendToday + (v.otherIncome||0);
+  const otherIncome = v.otherIncome||0;
+  const incomeDelayMonths = Number.isFinite(v.otherIncomeStartYear) ? Math.max(0, Math.round((v.otherIncomeStartYear - retireYearEff) * 12)) : 0;
+  if (otherIncome > 0 && N > 0 && incomeDelayMonths >= N) warns.push("Other income starts after your retirement period ends — it doesn't fund any of this plan.");
+  // PV (today-$ at retirement) of $1/mo real, paid at the start of each month for `months` months.
+  const annuityDue = months => months <= 0 ? 0 : Math.abs(rReal) < 1e-12 ? months : (1 + rReal) * (1 - Math.pow(1 + rReal, -months)) / rReal;
+  const bridgeMonths = Math.min(incomeDelayMonths, N); // months portfolio funds everything
+  const pvBridge = annuityDue(bridgeMonths), pvAfter = annuityDue(N) - pvBridge, pvTotal = annuityDue(N);
+  let totalSpendToday = 0; // level total spending, per month in today's dollars
+  if (N > 0){
+    if (otherIncome <= 0) totalSpendToday = spendableToday / pvTotal;
+    else {
+      const candidate = (spendableToday + otherIncome * pvAfter) / pvTotal; // assumes spending ≥ income after it starts
+      // If the pot can't even fund `otherIncome` through the bridge, income alone covers
+      // spending once it starts — the bridge is the binding constraint.
+      totalSpendToday = candidate >= otherIncome ? candidate : (pvBridge > 0 ? spendableToday / pvBridge : candidate);
+    }
+  }
+  // Portfolio withdrawal in the first retirement month (full spend during any bridge).
+  const portfolioSpendToday = N <= 0 ? 0 : incomeDelayMonths > 0 ? totalSpendToday : Math.max(0, totalSpendToday - otherIncome);
 
   // Drawdown simulation (nominal) using the solved spend; spending indexed to inflation from today
   cur = null;
   for (let m = 0; m < N; m++){
     const calYear = retireYearEff + Math.floor(m/12);
     if (!cur || cur.year !== calYear) pushYear(calYear, "Spending");
-    const wToday = portfolioSpendToday; // real, constant
+    const wToday = m < incomeDelayMonths ? totalSpendToday : Math.max(0, totalSpendToday - otherIncome); // real portfolio withdrawal
     const wNominal = wToday * Math.pow(1+inf, monthsRet + m);
     bal -= wNominal; cur.spent += wNominal;
     const g = bal * rA; bal += g; cur.growth += g; cur.end = bal;
     if ((m+1) % 12 === 0 || m === N-1) points.push({t: yrs + (m+1)/12, bal: Math.max(bal, 0), cum:(v.currentSavings||0)+totalContrib, cumReal: totalContribReal});
   }
 
-  // Desired-spending longevity (portfolio funds desired − other income)
+  // Desired-spending longevity (portfolio funds desired, minus other income once it starts)
   let desiredMonths = null;
   if (Number.isFinite(v.desiredSpend)){
-    const needToday = Math.max(0, v.desiredSpend - (v.otherIncome||0));
+    const desiredToday = Math.max(0, v.desiredSpend);
     let b = potFuture; desiredMonths = 0;
-    if (needToday <= 0) desiredMonths = Infinity;
+    if (incomeDelayMonths <= 0 && desiredToday <= otherIncome) desiredMonths = Infinity;
     else while (desiredMonths < 1200){
+      const needToday = desiredMonths < incomeDelayMonths ? desiredToday : Math.max(0, desiredToday - otherIncome);
       const w = needToday * Math.pow(1+inf, monthsRet + desiredMonths);
       if (b < w) break;
       const bNext = (b - w) * (1 + rA);
@@ -105,13 +122,14 @@ function compute(raw){
   // potFor() mirrors the accumulation loop above (same contribution formula) for extra monthly amounts.
   let gap = null;
   if (Number.isFinite(v.desiredSpend) && N > 0){
-    const needToday = Math.max(0, v.desiredSpend - v.otherIncome);
+    const desiredToday = Math.max(0, v.desiredSpend);
+    // Largest monthly amount the portfolio must fund in any month (full desired during a bridge).
+    const needToday = Math.max(pvBridge > 0 ? desiredToday : 0, Math.max(0, desiredToday - otherIncome));
     if (needToday <= 0) gap = { needToday, requiredPotToday: 0, shortfallToday: -potToday, extraMonthly: 0, lumpToday: 0 };
     else {
       // Invert the annuity-due directly (not pot × need ÷ sustainable) so a $0 pot still gets an answer.
       // Plus the PV of the end cushion, which the pot must also still hold at the end.
-      const requiredPotToday = (Math.abs(rReal) < 1e-12 ? needToday * N
-        : needToday * (1 + rReal) * (1 - Math.pow(1 + rReal, -N)) / rReal) + cushionPVToday;
+      const requiredPotToday = desiredToday * pvBridge + Math.max(0, desiredToday - otherIncome) * pvAfter + cushionPVToday;
       const shortfallToday = requiredPotToday - potToday;
       // Signed on purpose: negative means "trim this much" — back-fill adjusts both ways.
       // potFor() is linear in `extra`, so one slope gives the exact signed delta (no bisection).
@@ -131,7 +149,7 @@ function compute(raw){
       gap = { needToday, requiredPotToday, shortfallToday, extraMonthly, lumpToday };
     }
   }
-  return {warns, yrs, contribMonths, potFuture, potToday, growthEarned, totalContrib, retireYearEff, gap, san: v,
+  return {warns, yrs, contribMonths, potFuture, potToday, growthEarned, totalContrib, retireYearEff, gap, san: v, incomeDelayMonths,
           portfolioSpendToday, totalSpendToday, annual, points, desiredMonths, rReal, cushionToday, cushionFuture, cushionPVToday, endBalanceFuture: N > 0 ? bal : potFuture};
 }
 
@@ -166,7 +184,10 @@ function render(){
   $("spendYear").textContent = fmt.format(R.totalSpendToday * 12);
   $("spendFirst").textContent = fmt.format(R.totalSpendToday * Math.pow(1 + R.san.inflation/100, R.yrs));
   $("portfolioSpend").textContent = fmt.format(R.portfolioSpendToday);
+  $("portfolioSpendNote").textContent = R.incomeDelayMonths > 0 && R.incomeDelayMonths < (v.retireYears||0)*12 && (v.otherIncome||0) > 0 ? `/mo until ${R.retireYearEff + R.incomeDelayMonths/12}, then ${fmt.format(Math.max(0, R.totalSpendToday - (v.otherIncome||0)))}/mo` : "/mo today-$";
   $("otherSpend").textContent = fmt.format(v.otherIncome||0);
+  $("otherSpendNote").textContent = R.incomeDelayMonths > 0 && (v.otherIncome||0) > 0 ? `/mo from ${R.retireYearEff + R.incomeDelayMonths/12}` : "/mo today-$";
+  $("otherIncomeStartHint").textContent = !Number.isFinite(R.san.otherIncomeStartYear) || R.san.otherIncomeStartYear <= R.retireYearEff ? "Blank = starts at retirement, no bridge needed." : `Starts ${R.san.otherIncomeStartYear - R.retireYearEff} yr after retirement — portfolio funds all spending until ${R.san.otherIncomeStartYear}, then only the top-up.`;
   $("swr").textContent = R.potToday > 0 ? (R.portfolioSpendToday*12 / R.potToday * 100).toFixed(1) + "%" : "—";
   const scen = d => compute({ ...v, returnBefore: (v.returnBefore||0) + d, returnAfter: (v.returnAfter||0) + d }).totalSpendToday;
   $("scenLow").textContent = fmt.format(scen(-2)); $("scenBase").textContent = fmt.format(R.totalSpendToday); $("scenHigh").textContent = fmt.format(scen(2));
@@ -202,6 +223,14 @@ function render(){
   // Button never disables or relabels: adjusting the target up or down and re-pressing is the
   // intended workflow, so it stays armed while a portfolio-funded desired spend is entered.
   lastBackfill = backfillPlan(R, backfillMode);
+  // Floored at $0 yet still overshooting: the chosen lever isn't needed at all — the other
+  // input alone funds more than the target, so $0 is the solved value, not a blanked field.
+  // Only trimming Current savings (or Monthly, conversely) can hit the target exactly.
+  const bfSavingsLever = backfillMode === "savings" || R.contribMonths <= 0;
+  const bfFloored = !!lastBackfill && !!R.gap && R.gap.shortfallToday < 0 &&
+    (bfSavingsLever ? lastBackfill.currentSavings : lastBackfill.monthlyContribution) === 0;
+  const bfFunded = bfFloored ? compute({ ...v, ...lastBackfill }).totalSpendToday : 0;
+  const bfUnneeded = bfFloored && bfFunded > v.desiredSpend + 1;
   // Sticky solve: once Back-fill has been pressed, changing assumptions (presets, returns,
   // inflation, …) re-solves the same lever immediately instead of letting the plan drift off
   // the desired spend until the button is pressed again. Manual edits to the lever inputs or
@@ -227,17 +256,14 @@ function render(){
     const parts = [];
     if (lastBackfill.currentSavings !== R.san.currentSavings) parts.push(`savings ${fmt.format(R.san.currentSavings)} → ${fmt.format(lastBackfill.currentSavings)}`);
     if (lastBackfill.monthlyContribution !== R.san.monthlyContribution) parts.push(`monthly ${fmt.format(R.san.monthlyContribution)} → ${fmt.format(lastBackfill.monthlyContribution)}`);
-    if (!parts.length) $("backfillHint").textContent = R.totalSpendToday > v.desiredSpend + 1
+    if (bfUnneeded) $("backfillHint").textContent = bfSavingsLever
+      ? `No current savings needed — your monthly contributions alone still fund ${fmt.format(bfFunded)}/mo, above your ${fmt.format(v.desiredSpend)}/mo target, so savings solve to $0. To hit the target exactly, switch the toggle to Monthly contributions and back-fill that instead.`
+      : `No monthly contributions needed — your current savings alone still fund ${fmt.format(bfFunded)}/mo, above your ${fmt.format(v.desiredSpend)}/mo target, so monthly solves to $0 (that's the answer, not a blank field). To hit the target exactly, switch the toggle to Current savings and back-fill that instead.`;
+    else if (!parts.length) $("backfillHint").textContent = R.totalSpendToday > v.desiredSpend + 1
       ? `Can't trim to ${fmt.format(v.desiredSpend)}/mo with this lever alone — it still funds ${fmt.format(R.totalSpendToday)}/mo at $0. Switch the toggle to trim the other input.`
       : `Already funding ${fmt.format(v.desiredSpend)}/mo — change the target or the toggle, then press again.`;
-    else {
-      $("backfillHint").textContent = `Would set ${parts.join(" · ")} so sustainable spending meets ${fmt.format(v.desiredSpend)}/mo. Nothing changes until you press the button.`;
-      if (R.gap.shortfallToday < 0){ // trimming: warn if the chosen lever alone can't get down to the target
-        const funded = compute({ ...v, ...lastBackfill }).totalSpendToday;
-        if (funded > v.desiredSpend + 1) $("backfillHint").textContent += ` Even at $0 it still funds ${fmt.format(funded)}/mo — the other input alone covers more than this target.`;
-      }
-    }
-    if (stickySolve) $("backfillHint").textContent = `🔒 Solve locked — ${(backfillMode === "savings" || R.contribMonths <= 0) ? "current savings" : "monthly contributions"} re-adjust automatically to keep ${fmt.format(v.desiredSpend)}/mo funded when assumptions change. Edit current savings, monthly contributions, or the target to unlock.`;
+    else $("backfillHint").textContent = `Would set ${parts.join(" · ")} so sustainable spending meets ${fmt.format(v.desiredSpend)}/mo. Nothing changes until you press the button.`;
+    if (stickySolve && !bfUnneeded) $("backfillHint").textContent = `🔒 Solve locked — ${(backfillMode === "savings" || R.contribMonths <= 0) ? "current savings" : "monthly contributions"} re-adjust automatically to keep ${fmt.format(v.desiredSpend)}/mo funded when assumptions change. Edit current savings, monthly contributions, or the target to unlock.`;
   }
 
 
@@ -302,7 +328,7 @@ $("shareBtn").onclick = async () => {
   catch{ prompt("Copy your share link:", url); }
   setTimeout(() => $("shareBtn").textContent = "🔗 Copy share link", 1800);
 };
-$("resetBtn").onclick = () => { stickySolve = false; localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:4000, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; render(); };
+$("resetBtn").onclick = () => { stickySolve = false; localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:4000, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
 $("backfillBtn").onclick = () => { if (!lastBackfill) return; stickySolve = true; $("currentSavings").value = lastBackfill.currentSavings; $("monthlyContribution").value = lastBackfill.monthlyContribution; render(); };
 $("backfillMonthly").onclick = () => { backfillMode = "monthly"; render(); };
 $("backfillSavings").onclick = () => { backfillMode = "savings"; render(); };
