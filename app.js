@@ -7,7 +7,7 @@ const fmt2 = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maxi
 const compact = v => "$" + Intl.NumberFormat("en-US",{notation:"compact",maximumFractionDigits:1}).format(v);
 const mRate = annualPct => Math.pow(1 + annualPct/100, 1/12) - 1; // effective monthly
 
-let basis = "today", chartData = null;
+let basis = "today", chartData = null, lastBackfill = null, backfillMode = "monthly";
 
 function readInputs(){
   const v = {};
@@ -98,26 +98,37 @@ function compute(raw){
   if (Number.isFinite(v.desiredSpend) && N > 0){
     const needToday = Math.max(0, v.desiredSpend - v.otherIncome);
     if (needToday <= 0) gap = { needToday, requiredPotToday: 0, shortfallToday: -potToday, extraMonthly: 0, lumpToday: 0 };
-    else if (portfolioSpendToday > 0){
-      const requiredPotToday = potToday * needToday / portfolioSpendToday;
+    else {
+      // Invert the annuity-due directly (not pot × need ÷ sustainable) so a $0 pot still gets an answer.
+      const requiredPotToday = Math.abs(rReal) < 1e-12 ? needToday * N
+        : needToday * (1 + rReal) * (1 - Math.pow(1 + rReal, -N)) / rReal;
       const shortfallToday = requiredPotToday - potToday;
-      let extraMonthly = 0, lumpToday = 0;
-      if (shortfallToday > 0){
-        const targetFuture = requiredPotToday * Math.pow(1 + inflAnnual, yrs);
-        lumpToday = (targetFuture - potFuture) / Math.pow(1 + rB, monthsRet);
-        if (contribMonths > 0){
-          const potFor = extra => { let b = v.currentSavings; for (let m = 0; m < monthsRet; m++){ if (m < contribMonths) b += v.monthlyContribution * Math.pow(1 + v.contribGrowth/100, Math.floor(m/12)) + extra; b *= 1 + rB; } return b; };
-          let lo = 0, hi = 1000;
-          while (potFor(hi) < targetFuture && hi < 1e9) hi *= 2;
-          for (let i = 0; i < 50; i++){ const mid = (lo + hi) / 2; potFor(mid) < targetFuture ? lo = mid : hi = mid; }
-          extraMonthly = hi;
-        }
+      // Signed on purpose: negative means "trim this much" — back-fill adjusts both ways.
+      // potFor() is linear in `extra`, so one slope gives the exact signed delta (no bisection).
+      const targetFuture = requiredPotToday * Math.pow(1 + inflAnnual, yrs);
+      const lumpToday = (targetFuture - potFuture) / Math.pow(1 + rB, monthsRet);
+      let extraMonthly = 0;
+      if (contribMonths > 0){
+        const potFor = extra => { let b = v.currentSavings; for (let m = 0; m < monthsRet; m++){ if (m < contribMonths) b += v.monthlyContribution * Math.pow(1 + v.contribGrowth/100, Math.floor(m/12)) + extra; b *= 1 + rB; } return b; };
+        const slope = potFor(1) - potFor(0);
+        if (slope > 0) extraMonthly = (targetFuture - potFuture) / slope;
       }
       gap = { needToday, requiredPotToday, shortfallToday, extraMonthly, lumpToday };
     }
   }
   return {warns, yrs, contribMonths, potFuture, potToday, growthEarned, totalContrib, retireYearEff, gap, san: v,
           portfolioSpendToday, totalSpendToday, annual, points, desiredMonths, rReal};
+}
+
+/** Plan that rewrites savings/contributions so sustainable spending meets the desired level, in
+ *  either direction: mode "monthly" adjusts contributions, "savings" adjusts current savings
+ *  (toggle in the form). Rounded up to the nearest $10 so rounding can't reopen a gap; floored at $0. */
+function backfillPlan(R, mode){
+  if (!R.gap || R.gap.needToday <= 0) return null;
+  const savings = R.san.currentSavings, monthly = R.san.monthlyContribution, ceil10 = x => Math.max(0, Math.ceil(x/10)*10);
+  if (mode === "savings" || R.contribMonths <= 0) // no contribution phase left → savings is the only lever
+    return { currentSavings: ceil10(savings + R.gap.lumpToday), monthlyContribution: monthly };
+  return { currentSavings: savings, monthlyContribution: ceil10(monthly + R.gap.extraMonthly) };
 }
 
 function render(){
@@ -166,6 +177,29 @@ function render(){
     }
     dOut.textContent = msg;
   } else dOut.hidden = true;
+  // Button never disables or relabels: adjusting the target up or down and re-pressing is the
+  // intended workflow, so it stays armed while a portfolio-funded desired spend is entered.
+  lastBackfill = backfillPlan(R, backfillMode);
+  const showBackfill = Number.isFinite(v.desiredSpend) && !!R.gap && R.gap.needToday > 0;
+  $("backfillRow").hidden = !showBackfill;
+  $("backfillMonthly").classList.toggle("active", backfillMode === "monthly");
+  $("backfillSavings").classList.toggle("active", backfillMode === "savings");
+  if (lastBackfill){
+    const parts = [];
+    if (lastBackfill.currentSavings !== R.san.currentSavings) parts.push(`savings ${fmt.format(R.san.currentSavings)} → ${fmt.format(lastBackfill.currentSavings)}`);
+    if (lastBackfill.monthlyContribution !== R.san.monthlyContribution) parts.push(`monthly ${fmt.format(R.san.monthlyContribution)} → ${fmt.format(lastBackfill.monthlyContribution)}`);
+    if (!parts.length) $("backfillHint").textContent = R.totalSpendToday > v.desiredSpend + 1
+      ? `Can't trim to ${fmt.format(v.desiredSpend)}/mo with this lever alone — it still funds ${fmt.format(R.totalSpendToday)}/mo at $0. Switch the toggle to trim the other input.`
+      : `Already funding ${fmt.format(v.desiredSpend)}/mo — change the target or the toggle, then press again.`;
+    else {
+      $("backfillHint").textContent = `Would set ${parts.join(" · ")} so sustainable spending meets ${fmt.format(v.desiredSpend)}/mo. Nothing changes until you press the button.`;
+      if (R.gap.shortfallToday < 0){ // trimming: warn if the chosen lever alone can't get down to the target
+        const funded = compute({ ...v, ...lastBackfill }).totalSpendToday;
+        if (funded > v.desiredSpend + 1) $("backfillHint").textContent += ` Even at $0 it still funds ${fmt.format(funded)}/mo — the other input alone covers more than this target.`;
+      }
+    }
+  }
+
 
   $("tbody").innerHTML = R.annual.map(a =>
     `<tr class="phase-${a.phase.toLowerCase()}"><td>${a.year}</td><td><span class="badge">${a.phase}</span></td><td>${fmt.format(a.start)}</td><td>${a.contrib?fmt.format(a.contrib):"—"}</td><td>${fmt.format(a.growth)}</td><td>${a.spent?fmt.format(a.spent):"—"}</td><td>${fmt.format(Math.max(a.end,0))}</td></tr>`).join("");
@@ -229,6 +263,9 @@ $("shareBtn").onclick = async () => {
   setTimeout(() => $("shareBtn").textContent = "🔗 Copy share link", 1800);
 };
 $("resetBtn").onclick = () => { localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:4000, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredSpend:NaN}); $("desiredSpend").value=""; render(); };
+$("backfillBtn").onclick = () => { if (!lastBackfill) return; $("currentSavings").value = lastBackfill.currentSavings; $("monthlyContribution").value = lastBackfill.monthlyContribution; render(); };
+$("backfillMonthly").onclick = () => { backfillMode = "monthly"; render(); };
+$("backfillSavings").onclick = () => { backfillMode = "savings"; render(); };
 document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
   document.querySelectorAll("[data-preset]").forEach(x=>x.classList.remove("active")); b.classList.add("active");
   const [a, c] = b.dataset.preset.split(","); $("returnBefore").value = a; $("returnAfter").value = c; render();

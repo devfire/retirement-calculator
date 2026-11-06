@@ -82,6 +82,15 @@
       <label class="field"><span>Spending you'd like <em>(today's $/mo — to check if it lasts)</em></span>
         <div class="money"><i>$</i><input id="desiredSpend" type="number" min="0" step="100" placeholder="Leave blank — we'll solve for you"></div>
       </label>
+      <div class="backfill" id="backfillRow" hidden>
+        <div class="field"><span>Back-fill by adjusting</span>
+          <div class="toggle backfill-toggle" role="group" aria-label="Back-fill by adjusting">
+            <button type="button" id="backfillMonthly" class="active">Monthly contributions</button><button type="button" id="backfillSavings">Current savings</button>
+          </div>
+        </div>
+        <button type="button" id="backfillBtn" class="btn backfill-btn">← Back-fill to fund this spending</button>
+        <small class="hint" id="backfillHint"></small>
+      </div>
     </fieldset>
     <p class="warn" id="warn" hidden></p>
     <p class="fineprint">Assumes contributions &amp; spending at the start of each month, monthly compounding, constant returns/inflation. Gross of tax &amp; fees — illustration, not financial advice. Everything runs in your browser; nothing is sent anywhere.</p>

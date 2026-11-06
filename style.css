@@ -16,6 +16,7 @@ fieldset.highlight{background:#eef7f2;border:1px solid #cfe6da;border-radius:12p
 .money,.pct{display:flex;align-items:center;border:1px solid var(--border);border-radius:10px;background:#fbfcfb;overflow:hidden}.money i,.pct i{font-style:normal;color:var(--muted);padding:0 4px 0 12px;font-size:14px}.money input,.pct input{border:0!important;background:transparent!important}.pct i{padding:0 12px 0 4px}
 .hint{display:block;color:var(--muted);font-size:12px;margin-top:4px}
 .slider-row{display:flex;gap:12px;align-items:center}.slider-row input{flex:1;accent-color:var(--accent)}.slider-row output{font-weight:700;min-width:56px;text-align:right;font-size:14px}
+.backfill{display:grid;gap:2px;margin:0 0 6px}.backfill[hidden]{display:none}.backfill-toggle{display:flex}.backfill-toggle button{flex:1}.backfill-btn{justify-self:start;background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}.backfill-btn:hover{background:#0a6650}
 .presets{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}.presets button{border:1px solid var(--border);background:#fbfcfb;border-radius:99px;padding:6px 11px;font-size:12.5px;cursor:pointer;font:inherit}.presets button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .warn{background:#fdf0ec;color:#8c2f1a;border:1px solid #f3c6b8;border-radius:10px;padding:10px 12px;font-size:13px}
 .fineprint{color:var(--muted);font-size:12px}

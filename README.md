@@ -73,7 +73,7 @@ both return fields at once; you can still edit them individually afterwards.
   toggle, and a **year-by-year table** (start, contributed, growth, spent,
   end) aggregated from the monthly simulation.
 
-### Desired-spending check & gap solver
+### Desired-spending check, gap solver & back-fill
 
 Enter "Spending you'd like" and the app reports how many years that level
 actually lasts. If it falls short, it also computes:
@@ -81,6 +81,21 @@ actually lasts. If it falls short, it also computes:
 - the pot (today-$) that spending level would require, and the shortfall;
 - what closes the gap: **extra $/mo during your contribution phase**, or a
   **lump sum today** (only the lump sum is offered if contributions are 0).
+
+**Back-fill** turns that advice into the plan itself. A back-fill row sits
+under the field whenever a portfolio-funded desired spend is entered, with a
+toggle — **Monthly contributions** / **Current savings** — choosing which
+input absorbs the whole difference, and a hint previewing the exact new
+value. Pressing **← Back-fill to fund this spending** writes it into that
+field; every result, the chart, and persistence then update as if you'd
+typed it. It works in **both directions**: raise “Spending you'd like” and
+it tops the input up, lower it and it trims the input back down (floored at
+$0), so you can iterate on the target freely — the button never disables or
+changes label. Values are rounded up to the nearest $10 so rounding can't
+reopen a gap. (If contributions have already ended, the monthly side has no
+lever, so the difference lands on current savings instead — the preview
+shows which field will change. If one input alone already funds more than a
+lowered target even at $0, the hint says so.)
 
 If other income alone covers your desired spending, the pot is reported as
 untouched.
