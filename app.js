@@ -119,7 +119,12 @@ function compute(raw){
       const lumpToday = (targetFuture - potFuture) / Math.pow(1 + rB, monthsRet);
       let extraMonthly = 0;
       if (contribMonths > 0){
-        const potFor = extra => { let b = v.currentSavings; for (let m = 0; m < monthsRet; m++){ if (m < contribMonths) b += v.monthlyContribution * Math.pow(1 + v.contribGrowth/100, Math.floor(m/12)) + extra; b *= 1 + rB; } return b; };
+        // `extra` is a delta to monthlyContribution itself, so it must escalate by
+        // contribGrowth each year exactly as the real contribution will once
+        // backfillPlan writes (monthly + extra) back into that field. Adding it flat
+        // here would understate the slope whenever growth ≠ 0 and the solved amount
+        // would overshoot, then bounce instead of settling on the target.
+        const potFor = extra => { let b = v.currentSavings; for (let m = 0; m < monthsRet; m++){ if (m < contribMonths) b += (v.monthlyContribution + extra) * Math.pow(1 + v.contribGrowth/100, Math.floor(m/12)); b *= 1 + rB; } return b; };
         const slope = potFor(1) - potFor(0);
         if (slope > 0) extraMonthly = (targetFuture - potFuture) / slope;
       }
@@ -182,7 +187,7 @@ function render(){
     else if (R.desiredMonths >= (v.retireYears||0)*12) msg = `✅ Desired ${fmt.format(v.desiredSpend)}/mo (today's $) lasts ${(R.desiredMonths/12).toFixed(1)} years — covers your ${v.retireYears}-year retirement with room to spare.`;
     else msg = `⚠️ Desired ${fmt.format(v.desiredSpend)}/mo (today's $) runs out after ${(R.desiredMonths/12).toFixed(1)} years of retirement — ${(v.retireYears - R.desiredMonths/12).toFixed(1)} years short. Sustainable level is ${fmt.format(R.totalSpendToday)}/mo.`;
     if (R.gap && R.gap.needToday > 0){
-      if (R.gap.shortfallToday > 0) msg += ` To fund it fully you'd need a ${fmt.format(R.gap.requiredPotToday)} pot (today-$) — a ${fmt.format(R.gap.shortfallToday)} shortfall. Close it with ${R.gap.extraMonthly > 0 ? `~${fmt.format(R.gap.extraMonthly)}/mo extra during your contribution phase, or ` : ""}${fmt.format(Math.max(0, R.gap.lumpToday))} as a lump sum today.`;
+      if (R.gap.shortfallToday > 0) msg += ` To fund it fully you'd need a ${fmt.format(R.gap.requiredPotToday)} pot (today-$) — a ${fmt.format(R.gap.shortfallToday)} shortfall. Close it with ${R.gap.extraMonthly > 0 ? `~${fmt.format(R.gap.extraMonthly)}/mo extra during your contribution phase${R.san.contribGrowth ? `, that extra itself rising ${R.san.contribGrowth}%/yr like your other contributions` : ""}, or ` : ""}${fmt.format(Math.max(0, R.gap.lumpToday))} as a lump sum today.`;
       else msg += ` It needs a ${fmt.format(R.gap.requiredPotToday)} pot (today-$); you'll have ${fmt.format(R.potToday)} — a ${fmt.format(-R.gap.shortfallToday)} cushion.`;
     }
     dOut.textContent = msg;
@@ -200,15 +205,18 @@ function render(){
   // Sticky solve: once Back-fill has been pressed, changing assumptions (presets, returns,
   // inflation, …) re-solves the same lever immediately instead of letting the plan drift off
   // the desired spend until the button is pressed again. Manual edits to the lever inputs or
-  // the target itself unlock it (see the form input handler). `resolving` caps recursion at 1:
-  // after applying, the plan equals the current inputs, so the nested render is a no-op here.
+  // the target itself unlock it (see the form input handler). `resolving` is held for the
+  // whole nested render, so that render cannot re-solve in turn (recursion depth ≤ 1 even
+  // if a solve ever failed to reach a fixed point); the solved plan is itself a fixed
+  // point, so the nested render normally finds nothing left to change anyway.
   if (stickySolve && lastBackfill && !resolving &&
       (lastBackfill.currentSavings !== R.san.currentSavings || lastBackfill.monthlyContribution !== R.san.monthlyContribution)){
     resolving = true;
-    $("currentSavings").value = lastBackfill.currentSavings;
-    $("monthlyContribution").value = lastBackfill.monthlyContribution;
-    resolving = false;
-    render();
+    try {
+      $("currentSavings").value = lastBackfill.currentSavings;
+      $("monthlyContribution").value = lastBackfill.monthlyContribution;
+      render();
+    } finally { resolving = false; }
     return;
   }
   const showBackfill = Number.isFinite(v.desiredSpend) && !!R.gap && R.gap.needToday > 0;
