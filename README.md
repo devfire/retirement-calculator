@@ -54,6 +54,7 @@ inflation, retirement in 10 years):
 | Years spent in retirement | How long the pot must last; spending is solved to end at ~$0 exactly then |
 | Other income at retirement | Pension / Social Security, in today's $/mo, assumed inflation-indexed (see note below) |
 | Spending you'd like | Optional check: "how long would $X/mo actually last?" plus a gap solver (below) |
+| Desired amount to be left at the end | Optional cushion in today's $ left after the final retirement year (default $0). Sustainable spending, the desired-spending gap solver/back-fill, and longevity are solved to preserve it; the chart/table then end at its inflated future-$ value |
 
 Growth presets (Conservative 3% / Balanced 5% / Growth 7% / Optimistic 9%) set
 both return fields at once; you can still edit them individually afterwards.
@@ -117,7 +118,9 @@ by design: a pension is spent alongside the portfolio, not deposited into it.
 - Sustainable spending is a level real (inflation-adjusted) annuity-due solved
   from the pot in today's dollars using the real retirement return
   $(1+r_{after})/(1+\text{inflation})-1$. The nominal drawdown simulation
-  indexes each withdrawal by inflation from today and ends at ~$0.
+  indexes each withdrawal by inflation from today and ends at ~\$0, or at the
+  inflated value of "Desired amount to be left at the end" if one is set (its
+  present value at retirement, cushion $/(1+r_{real})^{N}$, is reserved before solving spending).
 - Everything is reported in **today's dollars** unless labelled "future $":
   future amounts are divided by $(1+\text{inflation})^{\text{years}}$.
 - Inputs are clamped to sane ranges (returns −50%…30%, inflation −10%…30%,

@@ -1,6 +1,6 @@
 "use strict";
 const $ = id => document.getElementById(id);
-const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribYears","contribGrowth","returnBefore","returnAfter","inflation","retireYears","otherIncome","desiredSpend"];
+const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribYears","contribGrowth","returnBefore","returnAfter","inflation","retireYears","otherIncome","desiredEndAmount","desiredSpend"];
 const nowYear = new Date().getFullYear();
 const fmt = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
 const fmt2 = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2});
@@ -22,7 +22,7 @@ function compute(raw){
   const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
   const v = { ...raw,
     currentSavings: Math.max(0, num(raw.currentSavings)), monthlyContribution: Math.max(0, num(raw.monthlyContribution)),
-    otherIncome: Math.max(0, num(raw.otherIncome)), desiredSpend: raw.desiredSpend,
+    otherIncome: Math.max(0, num(raw.otherIncome)), desiredEndAmount: Math.max(0, num(raw.desiredEndAmount)), desiredSpend: raw.desiredSpend,
     retireYear: Math.round(num(raw.retireYear, nowYear)), retireYears: clamp(num(raw.retireYears), 0, 60),
     contribYears: clamp(num(raw.contribYears), 0, 60), contribGrowth: clamp(num(raw.contribGrowth), -20, 50),
     returnBefore: clamp(num(raw.returnBefore), -50, 30), returnAfter: clamp(num(raw.returnAfter), -50, 30),
@@ -59,13 +59,19 @@ function compute(raw){
   const potToday = potFuture / Math.pow(1+inflAnnual, yrs);
   const growthEarned = potFuture - (v.currentSavings||0) - totalContrib;
 
-  // Sustainable level real spending from the pot (annuity-due in real terms)
+  // Sustainable level real spending from the pot (annuity-due in real terms), reserving the
+  // desired end cushion: PV at retirement of the cushion (today-$ at end of retirement) is
+  // cushionToday / (1+rReal)^N, so only the remainder of the pot funds spending.
   const N = Math.round((v.retireYears||0) * 12);
   const rReal = (1 + rA) / (1 + inf) - 1;
+  const cushionToday = v.desiredEndAmount||0;
+  const cushionPVToday = N > 0 ? cushionToday * Math.pow(1 + rReal, -N) : 0;
+  const cushionFuture = cushionToday * Math.pow(1 + inflAnnual, yrs + (v.retireYears||0)); // nominal $ at end
+  const spendableToday = Math.max(0, potToday - cushionPVToday);
   let portfolioSpendToday; // per month, today's dollars
   if (N <= 0) portfolioSpendToday = 0;
-  else if (Math.abs(rReal) < 1e-12) portfolioSpendToday = potToday / N;
-  else portfolioSpendToday = potToday * rReal / ((1 + rReal) * (1 - Math.pow(1 + rReal, -N)));
+  else if (Math.abs(rReal) < 1e-12) portfolioSpendToday = spendableToday / N;
+  else portfolioSpendToday = spendableToday * rReal / ((1 + rReal) * (1 - Math.pow(1 + rReal, -N)));
   const totalSpendToday = portfolioSpendToday + (v.otherIncome||0);
 
   // Drawdown simulation (nominal) using the solved spend; spending indexed to inflation from today
@@ -89,7 +95,10 @@ function compute(raw){
     else while (desiredMonths < 1200){
       const w = needToday * Math.pow(1+inf, monthsRet + desiredMonths);
       if (b < w) break;
-      b = (b - w) * (1 + rA); desiredMonths++;
+      const bNext = (b - w) * (1 + rA);
+      // Longevity counts only months that leave the cushion intact at month-end.
+      if (cushionToday > 0 && bNext < cushionToday * Math.pow(1+inf, monthsRet + desiredMonths + 1) - 1) break;
+      b = bNext; desiredMonths++;
     }
   }
   // Gap solver: what pot does the desired spend need, and what closes any shortfall?
@@ -100,8 +109,9 @@ function compute(raw){
     if (needToday <= 0) gap = { needToday, requiredPotToday: 0, shortfallToday: -potToday, extraMonthly: 0, lumpToday: 0 };
     else {
       // Invert the annuity-due directly (not pot × need ÷ sustainable) so a $0 pot still gets an answer.
-      const requiredPotToday = Math.abs(rReal) < 1e-12 ? needToday * N
-        : needToday * (1 + rReal) * (1 - Math.pow(1 + rReal, -N)) / rReal;
+      // Plus the PV of the end cushion, which the pot must also still hold at the end.
+      const requiredPotToday = (Math.abs(rReal) < 1e-12 ? needToday * N
+        : needToday * (1 + rReal) * (1 - Math.pow(1 + rReal, -N)) / rReal) + cushionPVToday;
       const shortfallToday = requiredPotToday - potToday;
       // Signed on purpose: negative means "trim this much" — back-fill adjusts both ways.
       // potFor() is linear in `extra`, so one slope gives the exact signed delta (no bisection).
@@ -117,7 +127,7 @@ function compute(raw){
     }
   }
   return {warns, yrs, contribMonths, potFuture, potToday, growthEarned, totalContrib, retireYearEff, gap, san: v,
-          portfolioSpendToday, totalSpendToday, annual, points, desiredMonths, rReal};
+          portfolioSpendToday, totalSpendToday, annual, points, desiredMonths, rReal, cushionToday, cushionFuture, cushionPVToday, endBalanceFuture: N > 0 ? bal : potFuture};
 }
 
 /** Plan that rewrites savings/contributions so sustainable spending meets the desired level, in
@@ -177,6 +187,13 @@ function render(){
     }
     dOut.textContent = msg;
   } else dOut.hidden = true;
+  const eOut = $("endAmountOut");
+  if (R.cushionToday > 0){
+    eOut.hidden = false;
+    eOut.textContent = R.cushionPVToday >= R.potToday && R.potToday > 0
+      ? `⚠️ Cushion of ${fmt.format(R.cushionToday)} (today's $) at the end needs a ${fmt.format(R.cushionPVToday)} pot (today-$) — more than your projected ${fmt.format(R.potToday)}, so the portfolio funds $0/mo. Projected end balance is ${fmt.format(R.endBalanceFuture)} future $.`
+      : `🛟 Leaving ${fmt.format(R.cushionToday)} (today's $) at the end — ${fmt.format(R.cushionFuture)} in future $. Projected end balance: ${fmt.format(R.endBalanceFuture)} future $. Sustainable spending above already accounts for this cushion.`;
+  } else eOut.hidden = true;
   // Button never disables or relabels: adjusting the target up or down and re-pressing is the
   // intended workflow, so it stays armed while a portfolio-funded desired spend is entered.
   lastBackfill = backfillPlan(R, backfillMode);
@@ -262,7 +279,7 @@ $("shareBtn").onclick = async () => {
   catch{ prompt("Copy your share link:", url); }
   setTimeout(() => $("shareBtn").textContent = "🔗 Copy share link", 1800);
 };
-$("resetBtn").onclick = () => { localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:4000, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredSpend:NaN}); $("desiredSpend").value=""; render(); };
+$("resetBtn").onclick = () => { localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:4000, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; render(); };
 $("backfillBtn").onclick = () => { if (!lastBackfill) return; $("currentSavings").value = lastBackfill.currentSavings; $("monthlyContribution").value = lastBackfill.monthlyContribution; render(); };
 $("backfillMonthly").onclick = () => { backfillMode = "monthly"; render(); };
 $("backfillSavings").onclick = () => { backfillMode = "savings"; render(); };

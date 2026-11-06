@@ -79,6 +79,10 @@
       <label class="field"><span>Other income at retirement — pension / Social Security <em>(today's $/mo, inflation-indexed)</em></span>
         <div class="money"><i>$</i><input id="otherIncome" type="number" min="0" step="100" value="0"></div>
       </label>
+      <label class="field"><span>Desired amount to be left at the end <em>(today's $ — cushion after the final retirement year)</em></span>
+        <div class="money"><i>$</i><input id="desiredEndAmount" type="number" min="0" step="1000" value="0"></div>
+        <small class="hint">Sustainable spending is solved to leave at least this much (in today's purchasing power) when retirement ends, instead of running to $0.</small>
+      </label>
       <label class="field"><span>Spending you'd like <em>(today's $/mo — to check if it lasts)</em></span>
         <div class="money"><i>$</i><input id="desiredSpend" type="number" min="0" step="100" placeholder="Leave blank — we'll solve for you"></div>
       </label>
@@ -107,6 +111,7 @@
         <div><span>Implied withdrawal rate</span><strong id="swr">—</strong><small>of pot at retirement</small></div>
       </div>
       <p class="desired" id="desiredOut" hidden></p>
+      <p class="desired" id="endAmountOut" hidden></p>
     </div>
 
     <div class="card scenarios">
