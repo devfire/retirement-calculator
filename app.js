@@ -20,15 +20,17 @@ function compute(raw){
   // Sanitize: never let a typed extreme (return ≤ −100%, negative savings, blank) turn the page into NaNs.
   const num = (x, d=0) => Number.isFinite(x) ? x : d;
   const clamp = (x, lo, hi) => Math.min(hi, Math.max(lo, x));
+  const retireYearIn = Math.round(num(raw.retireYear, nowYear));
   const v = { ...raw,
     currentSavings: Math.max(0, num(raw.currentSavings)), monthlyContribution: Math.max(0, num(raw.monthlyContribution)),
     otherIncome: Math.max(0, num(raw.otherIncome)), otherIncomeStartYear: Number.isFinite(raw.otherIncomeStartYear) ? Math.round(raw.otherIncomeStartYear) : NaN, desiredEndAmount: Math.max(0, num(raw.desiredEndAmount)), desiredSpend: raw.desiredSpend,
-    retireYear: Math.round(num(raw.retireYear, nowYear)), retireYears: clamp(num(raw.retireYears), 0, 60),
+    retireYear: Math.min(retireYearIn, nowYear + 60), retireYears: clamp(num(raw.retireYears), 0, 60),
     contribYears: clamp(num(raw.contribYears), 0, 60), contribGrowth: clamp(num(raw.contribGrowth), -20, 50),
     returnBefore: clamp(num(raw.returnBefore), -50, 30), returnAfter: clamp(num(raw.returnAfter), -50, 30),
     inflation: clamp(num(raw.inflation), -10, 30) };
   const clamped = ["returnBefore","returnAfter","inflation","contribGrowth"].some(k => v[k] !== num(raw[k]));
   const warns = clamped ? ["Some assumptions were outside sane ranges and were clamped (−50%…30% returns, −10%…30% inflation)."] : [];
+  if (v.retireYear !== retireYearIn) warns.push(`Retirement year is more than 60 years away — clamped to ${nowYear + 60}.`);
   const retireYearEff = Math.max(v.retireYear, nowYear);
   const yearsToRetire = retireYearEff - nowYear;
   if (v.retireYear < nowYear) warns.push("Retirement year is in the past — results below assume retiring now.");
@@ -339,4 +341,5 @@ document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
 $("returnBefore").addEventListener("input", () => document.querySelectorAll("[data-preset]").forEach(x=>x.classList.remove("active")));
 $("form").addEventListener("input", e => { if (["currentSavings","monthlyContribution","desiredSpend"].includes(e.target.id)) stickySolve = false; render(); });
 addEventListener("resize", drawChart);
+$("retireYear").max = nowYear + 60;
 load(); render();
