@@ -8,7 +8,7 @@ const fmt2 = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maxi
 const compact = v => "$" + Intl.NumberFormat("en-US",{notation:"compact",maximumFractionDigits:1}).format(v);
 const mRate = annualPct => Math.pow(1 + annualPct/100, 1/12) - 1; // effective monthly
 
-let basis = "today", chartData = null, lastBackfill = null, backfillMode = "monthly", stickySolve = false, resolving = false;
+let basis = "today", chartData = null, lastBackfill = null, backfillMode = "monthly", stickySolve = false, resolving = false, sharedView = false;
 
 /** Keep only digits and the first decimal point (commas, $, spaces, letters dropped). */
 function cleanMoney(s){
@@ -337,12 +337,20 @@ $("chart").addEventListener("mouseleave", () => $("tooltip").hidden = true);
 $("basisToday").onclick = () => { basis="today"; $("basisToday").classList.add("active"); $("basisNominal").classList.remove("active"); drawChart(); };
 $("basisNominal").onclick = () => { basis="nominal"; $("basisNominal").classList.add("active"); $("basisToday").classList.remove("active"); drawChart(); };
 
-function save(v){ try{ localStorage.setItem("retireplan-v1", JSON.stringify(v)); }catch{} }
+function save(v){ if (sharedView) return; try{ localStorage.setItem("retireplan-v1", JSON.stringify(v)); }catch{} }
+/** A plan opened from a share link is a view, not the saved plan: it must not reach
+ *  localStorage until the user changes it. Adopting clears the hash so a reload
+ *  doesn't re-apply the shared copy over the now-owned, saved one. */
+function adoptShared(){
+  if (!sharedView) return;
+  sharedView = false;
+  try{ history.replaceState(null, "", location.href.split("#")[0]); }catch{}
+}
 function apply(obj){ for (const f of FIELDS) if (obj[f] !== undefined && obj[f] !== null && !Number.isNaN(obj[f])) $(f).value = MONEY_FIELDS.includes(f) ? formatMoneyString(obj[f]) : obj[f]; }
 function load(){
   $("retireYear").value = nowYear + 10;
   try{
-    if (location.hash.length > 1) apply(JSON.parse(decodeURIComponent(location.hash.slice(1))));
+    if (location.hash.length > 1){ sharedView = true; apply(JSON.parse(decodeURIComponent(location.hash.slice(1)))); }
     else { const s = localStorage.getItem("retireplan-v1"); if (s) apply(JSON.parse(s)); }
   }catch{}
   for (const f of MONEY_FIELDS) if ($(f).value !== "") $(f).value = formatMoneyString($(f).value);
@@ -353,17 +361,17 @@ $("shareBtn").onclick = async () => {
   catch{ prompt("Copy your share link:", url); }
   setTimeout(() => $("shareBtn").textContent = "🔗 Copy share link", 1800);
 };
-$("resetBtn").onclick = () => { stickySolve = false; localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
-$("backfillBtn").onclick = () => { if (!lastBackfill) return; stickySolve = true; apply(lastBackfill); render(); };
+$("resetBtn").onclick = () => { stickySolve = false; adoptShared(); localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
+$("backfillBtn").onclick = () => { if (!lastBackfill) return; adoptShared(); stickySolve = true; apply(lastBackfill); render(); };
 $("backfillMonthly").onclick = () => { backfillMode = "monthly"; render(); };
 $("backfillSavings").onclick = () => { backfillMode = "savings"; render(); };
 document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
   document.querySelectorAll("[data-preset]").forEach(x=>x.classList.remove("active")); b.classList.add("active");
-  const [a, c] = b.dataset.preset.split(","); $("returnBefore").value = a; $("returnAfter").value = c; render();
+  const [a, c] = b.dataset.preset.split(","); adoptShared(); $("returnBefore").value = a; $("returnAfter").value = c; render();
 });
 $("returnBefore").addEventListener("input", () => document.querySelectorAll("[data-preset]").forEach(x=>x.classList.remove("active")));
 for (const f of MONEY_FIELDS) $(f).addEventListener("input", e => formatMoneyInput(e.target));
-$("form").addEventListener("input", e => { if (["currentSavings","monthlyContribution","desiredSpend"].includes(e.target.id)) stickySolve = false; render(); });
+$("form").addEventListener("input", e => { adoptShared(); if (["currentSavings","monthlyContribution","desiredSpend"].includes(e.target.id)) stickySolve = false; render(); });
 addEventListener("resize", drawChart);
 $("retireYear").max = nowYear + 60;
 load(); render();
