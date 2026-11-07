@@ -125,31 +125,28 @@ function compute(raw){
   let gap = null;
   if (Number.isFinite(v.desiredSpend) && N > 0){
     const desiredToday = Math.max(0, v.desiredSpend);
-    // Largest monthly amount the portfolio must fund in any month (full desired during a bridge).
-    const needToday = Math.max(pvBridge > 0 ? desiredToday : 0, Math.max(0, desiredToday - otherIncome));
-    if (needToday <= 0) gap = { needToday, requiredPotToday: 0, shortfallToday: -potToday, extraMonthly: 0, lumpToday: 0 };
-    else {
-      // Invert the annuity-due directly (not pot × need ÷ sustainable) so a $0 pot still gets an answer.
-      // Plus the PV of the end cushion, which the pot must also still hold at the end.
-      const requiredPotToday = desiredToday * pvBridge + Math.max(0, desiredToday - otherIncome) * pvAfter + cushionPVToday;
-      const shortfallToday = requiredPotToday - potToday;
-      // Signed on purpose: negative means "trim this much" — back-fill adjusts both ways.
-      // potFor() is linear in `extra`, so one slope gives the exact signed delta (no bisection).
-      const targetFuture = requiredPotToday * Math.pow(1 + inflAnnual, yrs);
-      const lumpToday = (targetFuture - potFuture) / Math.pow(1 + rB, monthsRet);
-      let extraMonthly = 0;
-      if (contribMonths > 0){
-        // `extra` is a delta to monthlyContribution itself, so it must escalate by
-        // contribGrowth each year exactly as the real contribution will once
-        // backfillPlan writes (monthly + extra) back into that field. Adding it flat
-        // here would understate the slope whenever growth ≠ 0 and the solved amount
-        // would overshoot, then bounce instead of settling on the target.
-        const potFor = extra => { let b = v.currentSavings; for (let m = 0; m < monthsRet; m++){ if (m < contribMonths) b += (v.monthlyContribution + extra) * Math.pow(1 + v.contribGrowth/100, Math.floor(m/12)); b *= 1 + rB; } return b; };
-        const slope = potFor(1) - potFor(0);
-        if (slope > 0) extraMonthly = (targetFuture - potFuture) / slope;
-      }
-      gap = { needToday, requiredPotToday, shortfallToday, extraMonthly, lumpToday };
+    // Invert the annuity-due directly (not pot × need ÷ sustainable) so a $0 pot still gets an answer.
+    // Plus the PV of the end cushion, which the pot must also still hold at the end. The cushion
+    // term stands even when other income covers all spending (both spending terms are 0 then):
+    // dropping it would report a $0 required pot and hide Back-fill for an unfunded end amount.
+    const requiredPotToday = desiredToday * pvBridge + Math.max(0, desiredToday - otherIncome) * pvAfter + cushionPVToday;
+    const shortfallToday = requiredPotToday - potToday;
+    // Signed on purpose: negative means "trim this much" — back-fill adjusts both ways.
+    // potFor() is linear in `extra`, so one slope gives the exact signed delta (no bisection).
+    const targetFuture = requiredPotToday * Math.pow(1 + inflAnnual, yrs);
+    const lumpToday = (targetFuture - potFuture) / Math.pow(1 + rB, monthsRet);
+    let extraMonthly = 0;
+    if (contribMonths > 0){
+      // `extra` is a delta to monthlyContribution itself, so it must escalate by
+      // contribGrowth each year exactly as the real contribution will once
+      // backfillPlan writes (monthly + extra) back into that field. Adding it flat
+      // here would understate the slope whenever growth ≠ 0 and the solved amount
+      // would overshoot, then bounce instead of settling on the target.
+      const potFor = extra => { let b = v.currentSavings; for (let m = 0; m < monthsRet; m++){ if (m < contribMonths) b += (v.monthlyContribution + extra) * Math.pow(1 + v.contribGrowth/100, Math.floor(m/12)); b *= 1 + rB; } return b; };
+      const slope = potFor(1) - potFor(0);
+      if (slope > 0) extraMonthly = (targetFuture - potFuture) / slope;
     }
+    gap = { requiredPotToday, shortfallToday, extraMonthly, lumpToday };
   }
   return {warns, yrs, contribMonths, potFuture, potToday, growthEarned, totalContrib, retireYearEff, gap, san: v, incomeDelayMonths,
           portfolioSpendToday, totalSpendToday, annual, points, desiredMonths, rReal, cushionToday, cushionFuture, cushionPVToday, endBalanceFuture: N > 0 ? bal : potFuture};
@@ -159,7 +156,7 @@ function compute(raw){
  *  either direction: mode "monthly" adjusts contributions, "savings" adjusts current savings
  *  (toggle in the form). Rounded up to the nearest $10 so rounding can't reopen a gap; floored at $0. */
 function backfillPlan(R, mode){
-  if (!R.gap || R.gap.needToday <= 0) return null;
+  if (!R.gap || R.gap.requiredPotToday <= 0) return null;
   const savings = R.san.currentSavings, monthly = R.san.monthlyContribution, ceil10 = x => Math.max(0, Math.ceil(x/10)*10);
   if (mode === "savings" || R.contribMonths <= 0) // no contribution phase left → savings is the only lever
     return { currentSavings: ceil10(savings + R.gap.lumpToday), monthlyContribution: monthly };
@@ -206,24 +203,24 @@ function render(){
   if (Number.isFinite(v.desiredSpend)){
     dOut.hidden = false;
     let msg;
-    if (R.desiredMonths === Infinity) msg = `✅ Your desired ${fmt.format(v.desiredSpend)}/mo is fully covered by other income — the pot is untouched.`;
+    if (R.desiredMonths === Infinity) msg = `✅ Your desired ${fmt.format(v.desiredSpend)}/mo is fully covered by other income — ${R.cushionToday > 0 ? "the pot only needs to fund the end amount" : "the pot is untouched"}.`;
     else if (R.desiredMonths >= (v.retireYears||0)*12) msg = `✅ Desired ${fmt.format(v.desiredSpend)}/mo (today's $) lasts ${(R.desiredMonths/12).toFixed(1)} years — covers your ${v.retireYears}-year retirement with room to spare.`;
     else msg = `⚠️ Desired ${fmt.format(v.desiredSpend)}/mo (today's $) runs out after ${(R.desiredMonths/12).toFixed(1)} years of retirement — ${(v.retireYears - R.desiredMonths/12).toFixed(1)} years short. Sustainable level is ${fmt.format(R.totalSpendToday)}/mo.`;
-    if (R.gap && R.gap.needToday > 0){
+    if (R.gap && R.gap.requiredPotToday > 0){
       if (R.gap.shortfallToday > 0) msg += ` To fund it fully you'd need a ${fmt.format(R.gap.requiredPotToday)} pot (today-$) — a ${fmt.format(R.gap.shortfallToday)} shortfall. Close it with ${R.gap.extraMonthly > 0 ? `~${fmt.format(R.gap.extraMonthly)}/mo extra during your contribution phase${R.san.contribGrowth ? `, that extra itself rising ${R.san.contribGrowth}%/yr like your other contributions` : ""}, or ` : ""}${fmt.format(Math.max(0, R.gap.lumpToday))} as a lump sum today.`;
-      else msg += ` It needs a ${fmt.format(R.gap.requiredPotToday)} pot (today-$); you'll have ${fmt.format(R.potToday)} — a ${fmt.format(-R.gap.shortfallToday)} cushion.`;
+      else msg += ` It needs a ${fmt.format(R.gap.requiredPotToday)} pot (today-$); you'll have ${fmt.format(R.potToday)} — a ${fmt.format(Math.max(0, -R.gap.shortfallToday))} cushion.`;
     }
     dOut.textContent = msg;
   } else dOut.hidden = true;
   const eOut = $("endAmountOut");
   if (R.cushionToday > 0){
     eOut.hidden = false;
-    eOut.textContent = R.cushionPVToday >= R.potToday && R.potToday > 0
+    eOut.textContent = R.cushionPVToday > R.potToday
       ? `⚠️ Cushion of ${fmt.format(R.cushionToday)} (today's $) at the end needs a ${fmt.format(R.cushionPVToday)} pot (today-$) — more than your projected ${fmt.format(R.potToday)}, so the portfolio funds $0/mo. Projected end balance is ${fmt.format(R.endBalanceFuture)} future $.`
       : `🛟 Leaving ${fmt.format(R.cushionToday)} (today's $) at the end — ${fmt.format(R.cushionFuture)} in future $. Projected end balance: ${fmt.format(R.endBalanceFuture)} future $. Sustainable spending above already accounts for this cushion.`;
   } else eOut.hidden = true;
   // Button never disables or relabels: adjusting the target up or down and re-pressing is the
-  // intended workflow, so it stays armed while a portfolio-funded desired spend is entered.
+  // intended workflow, so it stays armed while the pot must fund any desired spend or cushion.
   lastBackfill = backfillPlan(R, backfillMode);
   // Floored at $0 yet still overshooting: the chosen lever isn't needed at all — the other
   // input alone funds more than the target, so $0 is the solved value, not a blanked field.
@@ -250,7 +247,7 @@ function render(){
     } finally { resolving = false; }
     return;
   }
-  const showBackfill = Number.isFinite(v.desiredSpend) && !!R.gap && R.gap.needToday > 0;
+  const showBackfill = Number.isFinite(v.desiredSpend) && !!R.gap && R.gap.requiredPotToday > 0;
   $("backfillRow").hidden = !showBackfill;
   $("backfillMonthly").classList.toggle("active", backfillMode === "monthly");
   $("backfillSavings").classList.toggle("active", backfillMode === "savings");
