@@ -189,14 +189,22 @@ function backfillPlan(R, mode){
   return { currentSavings: savings, monthlyContribution: ceil10(monthly + R.gap.extraMonthly) };
 }
 
+function syncPresets(){
+  document.querySelectorAll("[data-preset]").forEach(b => {
+    const [a, c] = b.dataset.preset.split(",").map(Number);
+    b.classList.toggle("active", Number($("returnBefore").value) === a && Number($("returnAfter").value) === c);
+  });
+}
+
 function render(){
   const v = readInputs();
   const R = compute(v);
+  syncPresets();
   $("contribYearsOut").textContent = `${v.contribYears} yrs`;
   $("retireYearsOut").textContent = `${v.retireYears} yrs`;
   $("yearsHint").textContent = R.yrs > 0 ? `${R.yrs} year${R.yrs===1?"":"s"} from now (${nowYear} → ${R.retireYearEff})` : "Retiring now.";
   $("warn").hidden = R.warns.length === 0; $("warn").textContent = R.warns.join(" ");
-  $("contribYears").max = Math.max(40, Math.ceil(R.yrs));
+  $("contribYears").max = Math.max(40, Math.ceil(R.yrs), Math.ceil(R.san.contribYears));
 
   const contribEndYear = Math.round(nowYear + R.contribMonths/12);
   $("timeline").innerHTML =
@@ -346,7 +354,7 @@ function adoptShared(){
   sharedView = false;
   try{ history.replaceState(null, "", location.href.split("#")[0]); }catch{}
 }
-function apply(obj){ for (const f of FIELDS) if (obj[f] !== undefined && obj[f] !== null && !Number.isNaN(obj[f])) $(f).value = MONEY_FIELDS.includes(f) ? formatMoneyString(obj[f]) : obj[f]; }
+function apply(obj){ for (const f of FIELDS) if (obj[f] !== undefined && obj[f] !== null && !Number.isNaN(obj[f])){ if (f === "contribYears") $("contribYears").max = Math.max(40, obj[f]); $(f).value = MONEY_FIELDS.includes(f) ? formatMoneyString(obj[f]) : obj[f]; } }
 function load(){
   $("retireYear").value = nowYear + 10;
   try{
@@ -361,15 +369,13 @@ $("shareBtn").onclick = async () => {
   catch{ prompt("Copy your share link:", url); }
   setTimeout(() => $("shareBtn").textContent = "🔗 Copy share link", 1800);
 };
-$("resetBtn").onclick = () => { stickySolve = false; adoptShared(); localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
+$("resetBtn").onclick = () => { stickySolve = false; backfillMode = "monthly"; adoptShared(); localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
 $("backfillBtn").onclick = () => { if (!lastBackfill) return; adoptShared(); stickySolve = true; apply(lastBackfill); render(); };
 $("backfillMonthly").onclick = () => { backfillMode = "monthly"; render(); };
 $("backfillSavings").onclick = () => { backfillMode = "savings"; render(); };
 document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
-  document.querySelectorAll("[data-preset]").forEach(x=>x.classList.remove("active")); b.classList.add("active");
   const [a, c] = b.dataset.preset.split(","); adoptShared(); $("returnBefore").value = a; $("returnAfter").value = c; render();
 });
-$("returnBefore").addEventListener("input", () => document.querySelectorAll("[data-preset]").forEach(x=>x.classList.remove("active")));
 for (const f of MONEY_FIELDS) $(f).addEventListener("input", e => formatMoneyInput(e.target));
 $("form").addEventListener("input", e => { adoptShared(); if (["currentSavings","monthlyContribution","desiredSpend"].includes(e.target.id)) stickySolve = false; render(); });
 addEventListener("resize", drawChart);
