@@ -1,6 +1,7 @@
 "use strict";
 const $ = id => document.getElementById(id);
 const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribYears","contribGrowth","returnBefore","returnAfter","inflation","retireYears","otherIncome","otherIncomeStartYear","desiredEndAmount","desiredSpend"];
+const MONEY_FIELDS = ["currentSavings","monthlyContribution","otherIncome","desiredEndAmount","desiredSpend"];
 const nowYear = new Date().getFullYear();
 const fmt = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
 const fmt2 = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2});
@@ -9,9 +10,34 @@ const mRate = annualPct => Math.pow(1 + annualPct/100, 1/12) - 1; // effective m
 
 let basis = "today", chartData = null, lastBackfill = null, backfillMode = "monthly", stickySolve = false, resolving = false;
 
+/** Keep only digits and the first decimal point (commas, $, spaces, letters dropped). */
+function cleanMoney(s){
+  let out = "", dot = false;
+  for (const ch of String(s)) if (ch >= "0" && ch <= "9") out += ch; else if (ch === "." && !dot){ out += ch; dot = true; }
+  return out;
+}
+/** Group the integer part in thousands; fractional part (incl. a trailing "." or "0") stays as typed. */
+function formatMoneyString(value){
+  const clean = cleanMoney(value);
+  if (!clean) return "";
+  const dot = clean.indexOf(".");
+  const intPart = dot === -1 ? clean : clean.slice(0, dot);
+  return intPart.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (dot === -1 ? "" : "." + clean.slice(dot + 1));
+}
+/** Reformat a money input in place, keeping the caret after the same digit/point it followed. */
+function formatMoneyInput(input){
+  const start = input.selectionStart, end = input.selectionEnd;
+  const sigBefore = pos => pos === null || pos === undefined ? 0 : cleanMoney(input.value.slice(0, pos)).length;
+  const startSig = sigBefore(start), endSig = sigBefore(end);
+  const formatted = formatMoneyString(input.value);
+  input.value = formatted;
+  if (start === null || start === undefined) return;
+  const caretFor = sig => { if (sig === 0) return 0; let seen = 0; for (let i = 0; i < formatted.length; i++) if (/[0-9.]/.test(formatted[i]) && ++seen === sig) return i + 1; return formatted.length; };
+  input.setSelectionRange(caretFor(startSig), caretFor(endSig));
+}
 function readInputs(){
   const v = {};
-  for (const f of FIELDS){ const raw = $(f).value; v[f] = raw === "" ? NaN : parseFloat(raw); }
+  for (const f of FIELDS){ const raw = $(f).value; v[f] = raw === "" ? NaN : parseFloat(String(raw).replace(/,/g, "")); }
   return v;
 }
 
@@ -241,8 +267,7 @@ function render(){
       (lastBackfill.currentSavings !== R.san.currentSavings || lastBackfill.monthlyContribution !== R.san.monthlyContribution)){
     resolving = true;
     try {
-      $("currentSavings").value = lastBackfill.currentSavings;
-      $("monthlyContribution").value = lastBackfill.monthlyContribution;
+      apply(lastBackfill);
       render();
     } finally { resolving = false; }
     return;
@@ -313,13 +338,14 @@ $("basisToday").onclick = () => { basis="today"; $("basisToday").classList.add("
 $("basisNominal").onclick = () => { basis="nominal"; $("basisNominal").classList.add("active"); $("basisToday").classList.remove("active"); drawChart(); };
 
 function save(v){ try{ localStorage.setItem("retireplan-v1", JSON.stringify(v)); }catch{} }
-function apply(obj){ for (const f of FIELDS) if (obj[f] !== undefined && obj[f] !== null && !Number.isNaN(obj[f])) $(f).value = obj[f]; }
+function apply(obj){ for (const f of FIELDS) if (obj[f] !== undefined && obj[f] !== null && !Number.isNaN(obj[f])) $(f).value = MONEY_FIELDS.includes(f) ? formatMoneyString(obj[f]) : obj[f]; }
 function load(){
   $("retireYear").value = nowYear + 10;
   try{
     if (location.hash.length > 1) apply(JSON.parse(decodeURIComponent(location.hash.slice(1))));
     else { const s = localStorage.getItem("retireplan-v1"); if (s) apply(JSON.parse(s)); }
   }catch{}
+  for (const f of MONEY_FIELDS) if ($(f).value !== "") $(f).value = formatMoneyString($(f).value);
 }
 $("shareBtn").onclick = async () => {
   const url = location.href.split("#")[0] + "#" + encodeURIComponent(JSON.stringify(readInputs()));
@@ -328,7 +354,7 @@ $("shareBtn").onclick = async () => {
   setTimeout(() => $("shareBtn").textContent = "🔗 Copy share link", 1800);
 };
 $("resetBtn").onclick = () => { stickySolve = false; localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:4000, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
-$("backfillBtn").onclick = () => { if (!lastBackfill) return; stickySolve = true; $("currentSavings").value = lastBackfill.currentSavings; $("monthlyContribution").value = lastBackfill.monthlyContribution; render(); };
+$("backfillBtn").onclick = () => { if (!lastBackfill) return; stickySolve = true; apply(lastBackfill); render(); };
 $("backfillMonthly").onclick = () => { backfillMode = "monthly"; render(); };
 $("backfillSavings").onclick = () => { backfillMode = "savings"; render(); };
 document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
@@ -336,6 +362,7 @@ document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
   const [a, c] = b.dataset.preset.split(","); $("returnBefore").value = a; $("returnAfter").value = c; render();
 });
 $("returnBefore").addEventListener("input", () => document.querySelectorAll("[data-preset]").forEach(x=>x.classList.remove("active")));
+for (const f of MONEY_FIELDS) $(f).addEventListener("input", e => formatMoneyInput(e.target));
 $("form").addEventListener("input", e => { if (["currentSavings","monthlyContribution","desiredSpend"].includes(e.target.id)) stickySolve = false; render(); });
 addEventListener("resize", drawChart);
 $("retireYear").max = nowYear + 60;

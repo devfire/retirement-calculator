@@ -30,7 +30,7 @@
     <fieldset>
       <legend>Where you stand</legend>
       <label class="field"><span>Current savings</span>
-        <div class="money"><i>$</i><input id="currentSavings" type="number" min="0" step="1000" value="1000000"></div>
+        <div class="money"><i>$</i><input id="currentSavings" type="text" inputmode="decimal" value="1000000"></div>
       </label>
       <label class="field"><span>Target retirement year</span>
         <input id="retireYear" type="number" step="1">
@@ -41,7 +41,7 @@
     <fieldset class="highlight">
       <legend>⏱ Contribution phase — the unique bit</legend>
       <label class="field"><span>Monthly contribution</span>
-        <div class="money"><i>$</i><input id="monthlyContribution" type="number" min="0" step="100" value="4000"></div>
+        <div class="money"><i>$</i><input id="monthlyContribution" type="text" inputmode="decimal" value="4000"></div>
       </label>
       <label class="field"><span>Contribute for (years)</span>
         <div class="slider-row"><input id="contribYears" type="range" min="0" max="40" step="0.5" value="5"><output id="contribYearsOut">5 yrs</output></div>
@@ -77,18 +77,18 @@
     <fieldset>
       <legend>In retirement <em>(optional)</em></legend>
       <label class="field"><span>Other income — pension / Social Security <em>(today's $/mo, inflation-indexed)</em></span>
-        <div class="money"><i>$</i><input id="otherIncome" type="number" min="0" step="100" value="0"></div>
+        <div class="money"><i>$</i><input id="otherIncome" type="text" inputmode="decimal" value="0"></div>
       </label>
       <label class="field"><span>Other income starts in year <em>(optional — for Social Security, birth year + claiming age, e.g. 1970 + 67 = 2037)</em></span>
         <input id="otherIncomeStartYear" type="number" step="1" placeholder="At retirement">
         <small class="hint" id="otherIncomeStartHint"></small>
       </label>
       <label class="field"><span>Desired amount to be left at the end <em>(today's $ — cushion after the final retirement year)</em></span>
-        <div class="money"><i>$</i><input id="desiredEndAmount" type="number" min="0" step="1000" value="0"></div>
+        <div class="money"><i>$</i><input id="desiredEndAmount" type="text" inputmode="decimal" value="0"></div>
         <small class="hint">Sustainable spending is solved to leave at least this much (in today's purchasing power) when retirement ends, instead of running to $0.</small>
       </label>
       <label class="field"><span>Spending you'd like <em>(today's $/mo — to check if it lasts)</em></span>
-        <div class="money"><i>$</i><input id="desiredSpend" type="number" min="0" step="100" placeholder="Leave blank — we'll solve for you"></div>
+        <div class="money"><i>$</i><input id="desiredSpend" type="text" inputmode="decimal" placeholder="Leave blank — we'll solve for you"></div>
       </label>
       <div class="backfill" id="backfillRow" hidden>
         <div class="field"><span>Back-fill by adjusting</span>
