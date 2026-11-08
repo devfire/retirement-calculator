@@ -371,8 +371,8 @@ $("shareBtn").onclick = async () => {
 };
 $("resetBtn").onclick = () => { stickySolve = false; backfillMode = "monthly"; adoptShared(); localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
 $("backfillBtn").onclick = () => { if (!lastBackfill) return; adoptShared(); stickySolve = true; apply(lastBackfill); render(); };
-$("backfillMonthly").onclick = () => { backfillMode = "monthly"; render(); };
-$("backfillSavings").onclick = () => { backfillMode = "savings"; render(); };
+$("backfillMonthly").onclick = () => { backfillMode = "monthly"; stickySolve = false; render(); };
+$("backfillSavings").onclick = () => { backfillMode = "savings"; stickySolve = false; render(); };
 document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
   const [a, c] = b.dataset.preset.split(","); adoptShared(); $("returnBefore").value = a; $("returnAfter").value = c; render();
 });
