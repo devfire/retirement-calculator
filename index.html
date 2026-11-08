@@ -30,79 +30,79 @@
     <div class="plan-fields">
       <fieldset>
         <legend>Where you stand</legend>
-      <label class="field"><span>Current savings</span>
-        <div class="money"><i>$</i><input id="currentSavings" type="text" inputmode="decimal" value="1000000"></div>
-      </label>
-      <label class="field"><span>Target retirement year</span>
-        <input id="retireYear" type="number" step="1">
-        <small class="hint" id="yearsHint"></small>
-      </label>
-    </fieldset>
+        <label class="field"><span>Current savings</span>
+          <div class="money"><i>$</i><input id="currentSavings" type="text" inputmode="decimal" value="1000000"></div>
+        </label>
+        <label class="field"><span>Target retirement year</span>
+          <input id="retireYear" type="number" step="1">
+          <small class="hint" id="yearsHint"></small>
+        </label>
+      </fieldset>
 
-    <fieldset class="highlight">
-      <legend>⏱ Contribution phase — the unique bit</legend>
-      <label class="field"><span>Monthly contribution</span>
-        <div class="money"><i>$</i><input id="monthlyContribution" type="text" inputmode="decimal" value="0"></div>
-      </label>
-      <label class="field"><span>Contribute for (years)</span>
-        <div class="slider-row"><input id="contribYears" type="range" min="0" max="40" step="0.5" value="5"><output id="contribYearsOut">5 yrs</output></div>
-        <small class="hint">After this, contributions stop and the pot coasts until retirement. Set equal to “years to retirement” to contribute all the way.</small>
-      </label>
-      <label class="field"><span>Contribution increase / year <em>(optional)</em></span>
-        <div class="pct"><input id="contribGrowth" type="number" step="0.1" value="0"><i>%</i></div>
-      </label>
-    </fieldset>
+      <fieldset class="highlight">
+        <legend>⏱ Contribution phase — the unique bit</legend>
+        <label class="field"><span>Monthly contribution</span>
+          <div class="money"><i>$</i><input id="monthlyContribution" type="text" inputmode="decimal" value="0"></div>
+        </label>
+        <label class="field"><span>Contribute for (years)</span>
+          <div class="slider-row"><input id="contribYears" type="range" min="0" max="40" step="0.5" value="5"><output id="contribYearsOut">5 yrs</output></div>
+          <small class="hint">After this, contributions stop and the pot coasts until retirement. Set equal to “years to retirement” to contribute all the way.</small>
+        </label>
+        <label class="field"><span>Contribution increase / year <em>(optional)</em></span>
+          <div class="pct"><input id="contribGrowth" type="number" step="0.1" value="0"><i>%</i></div>
+        </label>
+      </fieldset>
 
-    <fieldset>
-      <legend>Assumptions</legend>
-      <div class="presets" role="group" aria-label="Growth presets">
-        <button type="button" data-preset="3,2">Conservative 3%</button>
-        <button type="button" data-preset="5,3.5">Balanced 5%</button>
-        <button type="button" data-preset="7,4.5" class="active">Growth 7%</button>
-        <button type="button" data-preset="9,5">Optimistic 9%</button>
-      </div>
-      <label class="field"><span>Investment growth before retirement</span>
-        <div class="pct"><input id="returnBefore" type="number" step="0.1" value="7"><i>% / yr</i></div>
-      </label>
-      <label class="field"><span>Growth in retirement <em>(usually lower)</em></span>
-        <div class="pct"><input id="returnAfter" type="number" step="0.1" value="4.5"><i>% / yr</i></div>
-      </label>
-      <label class="field"><span>Inflation</span>
-        <div class="pct"><input id="inflation" type="number" step="0.1" value="2.5"><i>% / yr</i></div>
-      </label>
-      <label class="field"><span>Years spent in retirement</span>
-        <div class="slider-row"><input id="retireYears" type="range" min="5" max="50" step="1" value="30"><output id="retireYearsOut">30 yrs</output></div>
-      </label>
-    </fieldset>
-
-    <fieldset class="wide">
-      <legend>In retirement <em>(optional)</em></legend>
-      <div class="field-row">
-      <label class="field"><span>Other income — pension / Social Security <em>(today's $/mo, inflation-indexed)</em></span>
-        <div class="money"><i>$</i><input id="otherIncome" type="text" inputmode="decimal" value="0"></div>
-      </label>
-      <label class="field"><span>Other income starts in year <em>(optional — for Social Security, birth year + claiming age, e.g. 1970 + 67 = 2037)</em></span>
-        <input id="otherIncomeStartYear" type="number" step="1" placeholder="At retirement">
-        <small class="hint" id="otherIncomeStartHint"></small>
-      </label>
-      <label class="field"><span>Desired amount to be left at the end <em>(today's $ — cushion after the final retirement year)</em></span>
-        <div class="money"><i>$</i><input id="desiredEndAmount" type="text" inputmode="decimal" value="0"></div>
-        <small class="hint">Sustainable spending is solved to leave at least this much (in today's purchasing power) when retirement ends, instead of running to $0.</small>
-      </label>
-      <label class="field"><span>Spending you'd like <em>(today's $/mo — to check if it lasts)</em></span>
-        <div class="money"><i>$</i><input id="desiredSpend" type="text" inputmode="decimal" placeholder="Leave blank — we'll solve for you"></div>
-      </label>
-      </div>
-      <div class="backfill" id="backfillRow" hidden>
-        <div class="field"><span>Back-fill by adjusting</span>
-          <div class="toggle backfill-toggle" role="group" aria-label="Back-fill by adjusting">
-            <button type="button" id="backfillMonthly" class="active">Monthly contributions</button><button type="button" id="backfillSavings">Current savings</button>
-          </div>
+      <fieldset>
+        <legend>Assumptions</legend>
+        <div class="presets" role="group" aria-label="Growth presets">
+          <button type="button" data-preset="3,2">Conservative 3%</button>
+          <button type="button" data-preset="5,3.5">Balanced 5%</button>
+          <button type="button" data-preset="7,4.5" class="active">Growth 7%</button>
+          <button type="button" data-preset="9,5">Optimistic 9%</button>
         </div>
-        <button type="button" id="backfillBtn" class="btn backfill-btn">← Back-fill to fund this spending</button>
-        <small class="hint" id="backfillHint"></small>
-      </div>
-    </fieldset>
+        <label class="field"><span>Investment growth before retirement</span>
+          <div class="pct"><input id="returnBefore" type="number" step="0.1" value="7"><i>% / yr</i></div>
+        </label>
+        <label class="field"><span>Growth in retirement <em>(usually lower)</em></span>
+          <div class="pct"><input id="returnAfter" type="number" step="0.1" value="4.5"><i>% / yr</i></div>
+        </label>
+        <label class="field"><span>Inflation</span>
+          <div class="pct"><input id="inflation" type="number" step="0.1" value="2.5"><i>% / yr</i></div>
+        </label>
+        <label class="field"><span>Years spent in retirement</span>
+          <div class="slider-row"><input id="retireYears" type="range" min="5" max="50" step="1" value="30"><output id="retireYearsOut">30 yrs</output></div>
+        </label>
+      </fieldset>
+
+      <fieldset class="wide">
+        <legend>In retirement <em>(optional)</em></legend>
+        <div class="field-row">
+          <label class="field"><span>Other income — pension / Social Security <em>(today's $/mo, inflation-indexed)</em></span>
+            <div class="money"><i>$</i><input id="otherIncome" type="text" inputmode="decimal" value="0"></div>
+          </label>
+          <label class="field"><span>Other income starts in year <em>(optional — for Social Security, birth year + claiming age, e.g. 1970 + 67 = 2037)</em></span>
+            <input id="otherIncomeStartYear" type="number" step="1" placeholder="At retirement">
+            <small class="hint" id="otherIncomeStartHint"></small>
+          </label>
+          <label class="field"><span>Desired amount to be left at the end <em>(today's $ — cushion after the final retirement year)</em></span>
+            <div class="money"><i>$</i><input id="desiredEndAmount" type="text" inputmode="decimal" value="0"></div>
+            <small class="hint">Sustainable spending is solved to leave at least this much (in today's purchasing power) when retirement ends, instead of running to $0.</small>
+          </label>
+          <label class="field"><span>Spending you'd like <em>(today's $/mo — to check if it lasts)</em></span>
+            <div class="money"><i>$</i><input id="desiredSpend" type="text" inputmode="decimal" placeholder="Leave blank — we'll solve for you"></div>
+          </label>
+        </div>
+        <div class="backfill" id="backfillRow" hidden>
+          <div class="field"><span>Back-fill by adjusting</span>
+            <div class="toggle backfill-toggle" role="group" aria-label="Back-fill by adjusting">
+              <button type="button" id="backfillMonthly" class="active">Monthly contributions</button><button type="button" id="backfillSavings">Current savings</button>
+            </div>
+          </div>
+          <button type="button" id="backfillBtn" class="btn backfill-btn">← Back-fill to fund this spending</button>
+          <small class="hint" id="backfillHint"></small>
+        </div>
+      </fieldset>
     </div>
     <p class="warn" id="warn" hidden></p>
     <p class="fineprint">Assumes contributions &amp; spending at the start of each month, monthly compounding, constant returns/inflation. Gross of tax &amp; fees — illustration, not financial advice. Everything runs in your browser; nothing is sent anywhere.</p>
