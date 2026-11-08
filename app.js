@@ -198,9 +198,9 @@ function render(){
 
   const contribEndYear = Math.round(nowYear + R.contribMonths/12);
   $("timeline").innerHTML =
-    (R.contribMonths > 0 ? `<div class="tl save"><b>💰 ${nowYear}–${contribEndYear} · Saving</b>${fmt.format(v.monthlyContribution||0)}/mo for ${R.contribMonths/12} yrs</div>` : "") +
-    (R.contribMonths/12 < R.yrs ? `<div class="tl coast"><b>🌿 ${contribEndYear}–${R.retireYearEff} · Coasting</b>No contributions — compounding only</div>` : "") +
-    `<div class="tl spend"><b>🌅 ${R.retireYearEff}–${R.retireYearEff + (v.retireYears||0)} · Spending</b>${fmt.format(R.totalSpendToday)}/mo in today's $</div>`;
+    (R.contribMonths > 0 ? `<div class="tl save"><b>💰 ${nowYear}–${contribEndYear} · Saving</b><span>${fmt.format(v.monthlyContribution||0)}/mo for ${R.contribMonths/12} yrs</span></div>` : "") +
+    (R.contribMonths/12 < R.yrs ? `<div class="tl coast"><b>🌿 ${contribEndYear}–${R.retireYearEff} · Coasting</b><span>No contributions — compounding only</span></div>` : "") +
+    `<div class="tl spend"><b>🌅 ${R.retireYearEff}–${R.retireYearEff + (v.retireYears||0)} · Spending</b><span>${fmt.format(R.totalSpendToday)}/mo in today's $</span></div>`;
 
   $("vYears").textContent = v.retireYears;
   $("spendMonth").textContent = fmt.format(R.totalSpendToday);

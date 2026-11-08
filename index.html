@@ -20,15 +20,16 @@
 <div class="hero">
   <h1>Contribute for a while. Coast. Then spend — sustainably.</h1>
   <p>Your contributions don't have to run until retirement day. Model exactly that: save hard for a few years, let the pot compound, then see what inflation-proof monthly spending it can fund.</p>
-  <div class="timeline" id="timeline" aria-label="Your timeline"></div>
 </div>
 
 <main class="layout">
   <form id="form" class="panel inputs" autocomplete="off">
     <h2>Your plan</h2>
+    <div class="timeline" id="timeline" aria-label="Your timeline"></div>
 
-    <fieldset>
-      <legend>Where you stand</legend>
+    <div class="plan-fields">
+      <fieldset>
+        <legend>Where you stand</legend>
       <label class="field"><span>Current savings</span>
         <div class="money"><i>$</i><input id="currentSavings" type="text" inputmode="decimal" value="1000000"></div>
       </label>
@@ -74,8 +75,9 @@
       </label>
     </fieldset>
 
-    <fieldset>
+    <fieldset class="wide">
       <legend>In retirement <em>(optional)</em></legend>
+      <div class="field-row">
       <label class="field"><span>Other income — pension / Social Security <em>(today's $/mo, inflation-indexed)</em></span>
         <div class="money"><i>$</i><input id="otherIncome" type="text" inputmode="decimal" value="0"></div>
       </label>
@@ -90,6 +92,7 @@
       <label class="field"><span>Spending you'd like <em>(today's $/mo — to check if it lasts)</em></span>
         <div class="money"><i>$</i><input id="desiredSpend" type="text" inputmode="decimal" placeholder="Leave blank — we'll solve for you"></div>
       </label>
+      </div>
       <div class="backfill" id="backfillRow" hidden>
         <div class="field"><span>Back-fill by adjusting</span>
           <div class="toggle backfill-toggle" role="group" aria-label="Back-fill by adjusting">
@@ -100,6 +103,7 @@
         <small class="hint" id="backfillHint"></small>
       </div>
     </fieldset>
+    </div>
     <p class="warn" id="warn" hidden></p>
     <p class="fineprint">Assumes contributions &amp; spending at the start of each month, monthly compounding, constant returns/inflation. Gross of tax &amp; fees — illustration, not financial advice. Everything runs in your browser; nothing is sent anywhere.</p>
   </form>
