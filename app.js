@@ -310,7 +310,7 @@ function render(){
 function drawChart(){
   if (!chartData) return;
   const cv = $("chart"), wrap = cv.parentElement, dpr = devicePixelRatio || 1;
-  const W = wrap.clientWidth, H = 320;
+  const W = wrap.clientWidth, H = cv.clientHeight || 320;
   cv.width = W*dpr; cv.height = H*dpr;
   const ctx = cv.getContext("2d"); ctx.scale(dpr,dpr); ctx.clearRect(0,0,W,H);
   const pts = chartData.points.map(p => ({t:p.t, bal: basis==="today" ? p.bal/Math.pow(1+chartData.inflation,p.t) : p.bal,
