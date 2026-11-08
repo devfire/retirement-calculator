@@ -72,8 +72,7 @@ both return fields at once; you can still edit them individually afterwards.
   in, what growth added, and the **inflation bite** (purchasing power lost
   while waiting to retire).
 - **Balance-over-time chart** (hover for values) with a today-$ / future-$
-  toggle, and a **year-by-year table** (start, contributed, growth, spent,
-  end) aggregated from the monthly simulation.
+  toggle.
 
 ### Desired-spending check, gap solver & back-fill
 
@@ -118,7 +117,7 @@ portfolio, not deposited into it, so the pot at retirement never moves when
 you change it. With income starting at retirement, the portfolio-funded
 spending is unchanged too (the headline total simply rises by the income).
 With a delayed start, the portfolio withdrawal profile — and therefore the
-chart and the year-by-year "Spent" column — *does* change: withdrawals are
+chart — *does* change: withdrawals are
 higher during the bridge years and lower once the income begins.
 
 Timing matters, though. Income is **not** assumed to start at retirement

@@ -69,18 +69,11 @@ function compute(raw){
 
   // Accumulation
   let bal = v.currentSavings||0, totalContrib = 0, totalContribReal = v.currentSavings||0;
-  const annual = []; // {year, phase, start, contrib, growth, spent, end}
   const points = [{t:0, bal, cum: bal, cumReal: bal}]; // yearly snapshots for chart
-  let cur = null;
-  const pushYear = (year, phase) => { cur = {year, phase, start: bal, contrib:0, growth:0, spent:0, end: bal}; annual.push(cur); };
-  if (monthsRet === 0) pushYear(nowYear, "Retire");
   for (let m = 0; m < monthsRet; m++){
-    const calYear = nowYear + Math.floor(m/12);
-    const phase = m < contribMonths ? "Saving" : "Coasting";
-    if (!cur || cur.year !== calYear || cur.phase !== phase) pushYear(calYear, phase);
     let c = 0;
-    if (m < contribMonths){ c = (v.monthlyContribution||0) * Math.pow(1 + (v.contribGrowth||0)/100, Math.floor(m/12)); bal += c; totalContrib += c; totalContribReal += c / Math.pow(1+inf, m); cur.contrib += c; }
-    const g = bal * rB; bal += g; cur.growth += g; cur.end = bal;
+    if (m < contribMonths){ c = (v.monthlyContribution||0) * Math.pow(1 + (v.contribGrowth||0)/100, Math.floor(m/12)); bal += c; totalContrib += c; totalContribReal += c / Math.pow(1+inf, m); }
+    const g = bal * rB; bal += g;
     if ((m+1) % 12 === 0 || m === monthsRet-1) points.push({t:(m+1)/12, bal, cum:(v.currentSavings||0)+totalContrib, cumReal: totalContribReal});
   }
   const potFuture = bal;
@@ -119,14 +112,11 @@ function compute(raw){
   const portfolioSpendToday = N <= 0 ? 0 : incomeDelayMonths > 0 ? totalSpendToday : Math.max(0, totalSpendToday - otherIncome);
 
   // Drawdown simulation (nominal) using the solved spend; spending indexed to inflation from today
-  cur = null;
   for (let m = 0; m < N; m++){
-    const calYear = retireYearEff + Math.floor(m/12);
-    if (!cur || cur.year !== calYear) pushYear(calYear, "Spending");
     const wToday = m < incomeDelayMonths ? totalSpendToday : Math.max(0, totalSpendToday - otherIncome); // real portfolio withdrawal
     const wNominal = wToday * Math.pow(1+inf, monthsRet + m);
-    bal -= wNominal; cur.spent += wNominal;
-    const g = bal * rA; bal += g; cur.growth += g; cur.end = bal;
+    bal -= wNominal;
+    const g = bal * rA; bal += g;
     if ((m+1) % 12 === 0 || m === N-1) points.push({t: yrs + (m+1)/12, bal: Math.max(bal, 0), cum:(v.currentSavings||0)+totalContrib, cumReal: totalContribReal});
   }
 
@@ -175,7 +165,7 @@ function compute(raw){
     gap = { requiredPotToday, shortfallToday, extraMonthly, lumpToday };
   }
   return {warns, yrs, contribMonths, potFuture, potToday, growthEarned, totalContrib, retireYearEff, gap, san: v, incomeDelayMonths,
-          portfolioSpendToday, totalSpendToday, annual, points, desiredMonths, rReal, cushionToday, cushionFuture, cushionPVToday, endBalanceFuture: N > 0 ? bal : potFuture};
+          portfolioSpendToday, totalSpendToday, points, desiredMonths, rReal, cushionToday, cushionFuture, cushionPVToday, endBalanceFuture: N > 0 ? bal : potFuture};
 }
 
 /** Plan that rewrites savings/contributions so sustainable spending meets the desired level, in
@@ -298,9 +288,6 @@ function render(){
     if (stickySolve && !bfUnneeded) $("backfillHint").textContent = `🔒 Solve locked — ${(backfillMode === "savings" || R.contribMonths <= 0) ? "current savings" : "monthly contributions"} re-adjust automatically to keep ${fmt.format(v.desiredSpend)}/mo funded when assumptions change. Edit current savings, monthly contributions, or the target to unlock.`;
   }
 
-
-  $("tbody").innerHTML = R.annual.map(a =>
-    `<tr class="phase-${a.phase.toLowerCase()}"><td>${a.year}</td><td><span class="badge">${a.phase}</span></td><td>${fmt.format(a.start)}</td><td>${a.contrib?fmt.format(a.contrib):"—"}</td><td>${fmt.format(a.growth)}</td><td>${a.spent?fmt.format(a.spent):"—"}</td><td>${fmt.format(Math.max(a.end,0))}</td></tr>`).join("");
 
   chartData = {points: R.points, yrs: R.yrs, retireYear: R.retireYearEff, inflation: R.san.inflation/100};
   drawChart();
