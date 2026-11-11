@@ -52,13 +52,15 @@ inflation, retirement in 10 years):
 | Growth in retirement | Usually lower (more bonds/cash); drives the drawdown |
 | Inflation | Used to restate everything in today's purchasing power |
 | Years spent in retirement | How long the pot must last; spending is solved to end at ~$0 exactly then |
+| Volatility before retirement / in retirement | Monte Carlo only: how much annual returns swing around the growth rates above (σ). Defaults come from the growth presets (e.g. Growth: 14% / 9%) |
 | Other income at retirement | Pension / Social Security, in today's $/mo, assumed inflation-indexed (see note below) |
 | Other income starts in year | Optional. When that pension / Social Security actually begins — for Social Security, birth year + claiming age (e.g. 1970 + 67 = 2037). Blank = at retirement. Until it starts, the portfolio funds *all* spending (the bridge); afterwards it only tops income up to the spending level |
 | Spending you'd like | Optional check: "how long would $X/mo actually last?" plus a gap solver (below) |
 | Desired amount to be left at the end | Optional cushion in today's $ left after the final retirement year (default $0). Sustainable spending, the desired-spending gap solver/back-fill, and longevity are solved to preserve it; the chart/table then end at its inflated future-$ value |
 
 Growth presets (Conservative 3% / Balanced 5% / Growth 7% / Optimistic 9%) set
-both return fields at once; you can still edit them individually afterwards.
+both return fields and both volatility fields at once; you can still edit
+them individually afterwards.
 
 ## Outputs
 
@@ -73,6 +75,16 @@ both return fields at once; you can still edit them individually afterwards.
   while waiting to retire).
 - **Balance-over-time chart** (hover for values) with a today-$ / future-$
   toggle.
+- **Monte Carlo card** — 1,000 simulated market paths with randomly varying
+  monthly returns: the chance the headline spending lasts the full
+  retirement, the spending that would have lasted in 85% of paths, the
+  median pot left, and — if you entered "Spending you'd like" — that
+  spending's success rate too. The balance chart gains a 10th–90th
+  percentile band and a simulated-median line (hover for values). With the
+  defaults the headline $5,620/mo (no contributions) lasts in ~47% of
+  paths: the deterministic answer is calibrated to be the *median* path,
+  so treat it as a coin-flip plan and the 85%-success spending
+  (~$3,200/mo) as the cautious one.
 
 ### Desired-spending check, gap solver & back-fill
 
@@ -143,14 +155,23 @@ income amount itself is unchanged.
   With delayed other income, the portfolio withdrawal is the full level
   spend during the bridge months and level-minus-income afterwards, and the
   same piecewise profile is inverted for the desired-spending gap solver.
+- **Monte Carlo:** 1,000 paths with a fixed seed (results don't jitter while
+  you type). Monthly gross returns are lognormal with the entered volatility,
+  calibrated so the *median* compounded return equals the entered growth
+  rate — the deterministic result is the middle path by construction.
+  Because the balance is affine in the level spend, each path's exact
+  maximum sustainable spend (never overdrawing, end cushion preserved,
+  other-income bridge and $0 withdrawal floor handled) is computed
+  analytically; success rates and the 85%-success spending are read off
+  that distribution. Inflation, contributions, and other income stay at
+  their entered values — only returns vary.
 - Everything is reported in **today's dollars** unless labelled "future $":
   future amounts are divided by $(1+\text{inflation})^{\text{years}}$.
 - Inputs are clamped to sane ranges (returns −50%…30%, inflation −10%…30%,
-  non-negative money) with an on-page warning, so extreme entries can't
-  produce `NaN` results. A retirement year in the past is treated as
-  "retire now"; a contribution period longer than the time to retirement is
-  capped at retirement.
-
+  volatility 0…40%, non-negative money) with an on-page warning, so extreme
+  entries can't produce `NaN` results. A retirement year in the past is
+  treated as "retire now"; a contribution period longer than the time to
+  retirement is capped at retirement.
 ## Privacy & persistence
 
 - All computation runs locally in your browser; nothing is sent anywhere.
@@ -174,7 +195,10 @@ income amount itself is unchanged.
 
 ## Limitations
 
-Constant assumed returns and inflation (no market volatility/sequence risk,
-no Monte Carlo), no taxes, fees, or account types, and other income is
-assumed inflation-indexed from its start year. An illustration for planning
-— **not financial advice.**
+The headline result assumes constant returns and inflation; the Monte Carlo
+card relaxes the return assumption but draws returns independently each
+month (lognormal — no fat tails, crashes-that-cluster, mean reversion, or
+regime shifts) and keeps inflation fixed, so its odds are a stress lens,
+not a probability guarantee. No taxes, fees, or account types, and other
+income is assumed inflation-indexed from its start year. An illustration
+for planning — **not financial advice.**

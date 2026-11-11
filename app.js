@@ -1,6 +1,6 @@
 "use strict";
 const $ = id => document.getElementById(id);
-const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribYears","contribGrowth","returnBefore","returnAfter","inflation","retireYears","otherIncome","otherIncomeStartYear","desiredEndAmount","desiredSpend"];
+const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribYears","contribGrowth","returnBefore","returnAfter","volBefore","volAfter","inflation","retireYears","otherIncome","otherIncomeStartYear","desiredEndAmount","desiredSpend"];
 const MONEY_FIELDS = ["currentSavings","monthlyContribution","otherIncome","desiredEndAmount","desiredSpend"];
 const nowYear = new Date().getFullYear();
 const fmt = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
@@ -53,9 +53,10 @@ function compute(raw){
     retireYear: Math.min(retireYearIn, nowYear + 60), retireYears: clamp(num(raw.retireYears), 0, 60),
     contribYears: clamp(num(raw.contribYears), 0, 60), contribGrowth: clamp(num(raw.contribGrowth), -20, 50),
     returnBefore: clamp(num(raw.returnBefore), -50, 30), returnAfter: clamp(num(raw.returnAfter), -50, 30),
+    volBefore: clamp(num(raw.volBefore), 0, 40), volAfter: clamp(num(raw.volAfter), 0, 40),
     inflation: clamp(num(raw.inflation), -10, 30) };
-  const clamped = ["returnBefore","returnAfter","inflation","contribGrowth"].some(k => v[k] !== num(raw[k]));
-  const warns = clamped ? ["Some assumptions were outside sane ranges and were clamped (−50%…30% returns, −10%…30% inflation)."] : [];
+  const clamped = ["returnBefore","returnAfter","inflation","contribGrowth","volBefore","volAfter"].some(k => v[k] !== num(raw[k]));
+  const warns = clamped ? ["Some assumptions were outside sane ranges and were clamped (−50%…30% returns, −10%…30% inflation, 0…40% volatility)."] : [];
   if (v.retireYear !== retireYearIn) warns.push(`Retirement year is more than 60 years away — clamped to ${nowYear + 60}.`);
   const retireYearEff = Math.max(v.retireYear, nowYear);
   const yearsToRetire = retireYearEff - nowYear;
@@ -168,6 +169,69 @@ function compute(raw){
           portfolioSpendToday, totalSpendToday, points, desiredMonths, rReal, cushionToday, cushionFuture, cushionPVToday, endBalanceFuture: N > 0 ? bal : potFuture};
 }
 
+/** Monte Carlo: 1,000 seeded (therefore stable while typing) monthly paths. Monthly gross
+ *  returns are lognormal, calibrated so the MEDIAN compounded return equals the entered
+ *  growth rate — the deterministic plan above is the middle path. Per trial, balances are
+ *  affine in the level total spend S (portfolio withdrawal is S during any other-income
+ *  bridge, S − income afterwards), so tracking coefficients A − S·B through retirement
+ *  gives that trial's exact maximum sustainable S from two passes' worth of constraints:
+ *  never overdraw a month, and finish at or above the end cushion. That yields success
+ *  rates at any spend and the spend at any success target with no bisection. Two affine
+ *  regimes are tracked because after other income starts the withdrawal floors at $0
+ *  when S ≤ income; the low regime governs exactly when its own maximum stays below it. */
+const MC_TRIALS = 1000;
+function monteCarlo(R){
+  const v = R.san, N = Math.round((v.retireYears||0) * 12);
+  if (N <= 0) return null;
+  const monthsRet = Math.round(R.yrs * 12), contribMonths = R.contribMonths;
+  const muB = Math.log(1 + v.returnBefore/100)/12, sigB = (v.volBefore||0)/100/Math.sqrt(12);
+  const muA = Math.log(1 + v.returnAfter/100)/12, sigA = (v.volAfter||0)/100/Math.sqrt(12);
+  const inflAnnual = v.inflation/100, delay = R.incomeDelayMonths, income = v.otherIncome||0, spend = R.totalSpendToday;
+  const contribAmt = new Float64Array(monthsRet), inflRet = new Float64Array(N); // per-month constants, hoisted out of the trial loop
+  for (let m = 0; m < monthsRet; m++) contribAmt[m] = m < contribMonths ? (v.monthlyContribution||0) * Math.pow(1 + (v.contribGrowth||0)/100, Math.floor(m/12)) : 0;
+  for (let m = 0; m < N; m++) inflRet[m] = Math.pow(1 + inflAnnual, (monthsRet + m)/12);
+  let state = 0x9e3779b9, spare = null;
+  const rng = () => { state |= 0; state = state + 0x6D2B79F5 | 0; let t = Math.imul(state ^ state >>> 15, 1 | state); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const gauss = () => { if (spare !== null){ const s = spare; spare = null; return s; } let u = 0, w = 0, r = 0; do { u = 2*rng()-1; w = 2*rng()-1; r = u*u + w*w; } while (r >= 1 || r === 0); const m = Math.sqrt(-2*Math.log(r)/r); spare = w*m; return u*m; };
+  const sMax = new Float64Array(MC_TRIALS);
+  const bands = R.points.map(() => []); // nominal balance at each chart point, under the headline spend
+  for (let trial = 0; trial < MC_TRIALS; trial++){
+    let bal = v.currentSavings||0, bi = 0;
+    bands[bi++].push(bal);
+    for (let m = 0; m < monthsRet; m++){
+      bal += contribAmt[m];
+      bal *= Math.exp(muB + sigB * gauss());
+      if ((m+1) % 12 === 0 || m === monthsRet-1) bands[bi++].push(bal);
+    }
+    // Retirement: A/S·B coefficients for the high regime (S ≥ income) and low regime (S ≤ income),
+    // plus the actual balance path under the headline spend for the chart bands.
+    let aH = bal, bH = 0, aL = bal, bL = 0, maxH = Infinity, maxL = Infinity;
+    for (let m = 0; m < N; m++){
+      const inflF = inflRet[m], g = Math.exp(muA + sigA * gauss()), bridged = m >= delay;
+      maxH = Math.min(maxH, (aH + (bridged ? income * inflF : 0)) / (bH + inflF));
+      const denL = bL + (bridged ? 0 : inflF);
+      if (denL > 0) maxL = Math.min(maxL, aL / denL); else if (aL < 0) maxL = -Infinity;
+      aH = (aH + (bridged ? income * inflF : 0)) * g; bH = (bH + inflF) * g;
+      aL *= g; if (!bridged) bL = (bL + inflF) * g; else bL *= g;
+      const w = (bridged ? Math.max(0, spend - income) : spend) * inflF;
+      bal = bal < w ? 0 : (bal - w) * g;
+      if ((m+1) % 12 === 0 || m === N-1) bands[bi++].push(bal);
+    }
+    if (bH > 0) maxH = Math.min(maxH, (aH - R.cushionFuture) / bH);
+    if (bL > 0) maxL = Math.min(maxL, (aL - R.cushionFuture) / bL);
+    sMax[trial] = income > 0 && maxL < income ? maxL : maxH;
+  }
+  const sorted = Float64Array.from(sMax).sort(), quantile = (arr, q) => arr[Math.min(arr.length-1, Math.max(0, Math.floor(q * arr.length)))];
+  const successAt = s => { let n = 0; for (const x of sMax) if (x >= s - 1e-6) n++; return n / MC_TRIALS; };
+  const bandPts = bands.map((vals, i) => { const s = Float64Array.from(vals).sort(); return {t: R.points[i].t, p10: quantile(s, .1), p50: quantile(s, .5), p90: quantile(s, .9)}; });
+  const deflate = yrs => Math.pow(1 + inflAnnual, yrs);
+  return { trials: MC_TRIALS, success: successAt(spend),
+           successDesired: Number.isFinite(v.desiredSpend) ? successAt(Math.max(0, v.desiredSpend)) : null,
+           spend85: Math.max(0, quantile(sorted, .15)),
+           medianEndToday: bandPts[bandPts.length-1].p50 / deflate(R.yrs + (v.retireYears||0)),
+           p10EndToday: bandPts[bandPts.length-1].p10 / deflate(R.yrs + (v.retireYears||0)), bands: bandPts };
+}
+
 /** Plan that rewrites savings/contributions so sustainable spending meets the desired level, in
  *  either direction: mode "monthly" adjusts contributions, "savings" adjusts current savings
  *  (toggle in the form). Rounded up to the nearest $10 so rounding can't reopen a gap; floored at $0. */
@@ -181,8 +245,8 @@ function backfillPlan(R, mode){
 
 function syncPresets(){
   document.querySelectorAll("[data-preset]").forEach(b => {
-    const [a, c] = b.dataset.preset.split(",").map(Number);
-    b.classList.toggle("active", Number($("returnBefore").value) === a && Number($("returnAfter").value) === c);
+    const [a, c, vb, va] = b.dataset.preset.split(",").map(Number);
+    b.classList.toggle("active", Number($("returnBefore").value) === a && Number($("returnAfter").value) === c && Number($("volBefore").value) === vb && Number($("volAfter").value) === va);
   });
 }
 
@@ -214,6 +278,23 @@ function render(){
   $("swr").textContent = R.potToday > 0 ? (R.portfolioSpendToday*12 / R.potToday * 100).toFixed(1) + "%" : "—";
   const scen = d => compute({ ...v, returnBefore: (v.returnBefore||0) + d, returnAfter: (v.returnAfter||0) + d }).totalSpendToday;
   $("scenLow").textContent = fmt.format(scen(-2)); $("scenBase").textContent = fmt.format(R.totalSpendToday); $("scenHigh").textContent = fmt.format(scen(2));
+  const MC = monteCarlo(R);
+  if (MC){
+    $("mcSuccessLabel").textContent = `Chance ${fmt.format(R.totalSpendToday)}/mo lasts ${v.retireYears} yrs`;
+    $("mcSuccess").textContent = Math.round(MC.success * 100) + "%";
+    $("mcSuccessNote").textContent = `of ${MC.trials.toLocaleString()} simulated paths`;
+    $("mcSpend85").textContent = fmt.format(MC.spend85);
+    $("mcMedianEnd").textContent = fmt.format(MC.medianEndToday);
+    $("mcMedianEndNote").textContent = `in today's $ · headline spend is solved to end near $0 · 10th pct leaves ${fmt.format(MC.p10EndToday)}`;
+    const dMC = $("mcDesiredOut");
+    if (MC.successDesired !== null){
+      dMC.hidden = false;
+      const pct = Math.round(MC.successDesired * 100);
+      dMC.textContent = MC.successDesired >= .999
+        ? `✅ Your desired ${fmt.format(v.desiredSpend)}/mo lasted in essentially all ${MC.trials.toLocaleString()} simulated paths — market swings at this volatility don't break it.`
+        : `🎲 Your desired ${fmt.format(v.desiredSpend)}/mo (today's $) lasted the full ${v.retireYears} years in ${pct}% of simulated paths. Spending ${fmt.format(MC.spend85)}/mo would have lasted in 85%.`;
+    } else dMC.hidden = true;
+  }
   $("potFuture").textContent = fmt.format(R.potFuture);
   $("potToday").textContent = `= ${fmt.format(R.potToday)} in today's dollars`;
   $("putIn").textContent = fmt.format((v.currentSavings||0) + R.totalContrib);
@@ -289,7 +370,7 @@ function render(){
   }
 
 
-  chartData = {points: R.points, yrs: R.yrs, retireYear: R.retireYearEff, inflation: R.san.inflation/100};
+  chartData = {points: R.points, yrs: R.yrs, retireYear: R.retireYearEff, inflation: R.san.inflation/100, mc: MC ? MC.bands : null};
   drawChart();
   save(v);
 }
@@ -302,8 +383,11 @@ function drawChart(){
   const ctx = cv.getContext("2d"); ctx.scale(dpr,dpr); ctx.clearRect(0,0,W,H);
   const pts = chartData.points.map(p => ({t:p.t, bal: basis==="today" ? p.bal/Math.pow(1+chartData.inflation,p.t) : p.bal,
                                                       cum: basis==="today" ? p.cumReal : p.cum}));
+  const mc = chartData.mc ? chartData.mc.map(p => ({t:p.t, p10: basis==="today" ? p.p10/Math.pow(1+chartData.inflation,p.t) : p.p10,
+                                                             p50: basis==="today" ? p.p50/Math.pow(1+chartData.inflation,p.t) : p.p50,
+                                                             p90: basis==="today" ? p.p90/Math.pow(1+chartData.inflation,p.t) : p.p90})) : null;
   const pad = {l:58, r:14, t:14, b:28}, iw = W-pad.l-pad.r, ih = H-pad.t-pad.b;
-  const maxT = Math.max(...pts.map(p=>p.t), 1), maxV = Math.max(...pts.map(p=>p.bal), 1) * 1.08;
+  const maxT = Math.max(...pts.map(p=>p.t), 1), maxV = Math.max(...pts.map(p=>p.bal), ...(mc ? mc.map(p=>p.p90) : []), 1) * 1.08;
   const X = t => pad.l + t/maxT*iw, Y = val => pad.t + ih - val/maxV*ih;
   ctx.font = "11px system-ui"; ctx.fillStyle = "#66736b"; ctx.strokeStyle = "#e3e9e3";
   for (let i=0;i<=4;i++){ const val = maxV*i/4, y = Y(val); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke(); ctx.fillText(compact(val), 6, y+4); }
@@ -311,22 +395,24 @@ function drawChart(){
   // balance area, split at retirement
   const line = (key, color, dash) => { ctx.beginPath(); ctx.setLineDash(dash||[]); pts.forEach((p,i)=> i?ctx.lineTo(X(p.t),Y(p[key])):ctx.moveTo(X(p.t),Y(p[key]))); ctx.strokeStyle=color; ctx.lineWidth=2; ctx.stroke(); ctx.setLineDash([]); };
   ctx.beginPath(); pts.forEach((p,i)=> i?ctx.lineTo(X(p.t),Y(p.bal)):ctx.moveTo(X(p.t),Y(p.bal))); ctx.lineTo(X(maxT),Y(0)); ctx.lineTo(X(0),Y(0)); ctx.closePath(); ctx.fillStyle="rgba(14,122,95,.13)"; ctx.fill();
+  if (mc){ ctx.beginPath(); mc.forEach((p,i)=> i?ctx.lineTo(X(p.t),Y(p.p90)):ctx.moveTo(X(p.t),Y(p.p90))); [...mc].reverse().forEach(p=>ctx.lineTo(X(p.t),Y(p.p10))); ctx.closePath(); ctx.fillStyle="rgba(23,33,27,.10)"; ctx.fill();
+           ctx.beginPath(); mc.forEach((p,i)=> i?ctx.lineTo(X(p.t),Y(p.p50)):ctx.moveTo(X(p.t),Y(p.p50))); ctx.setLineDash([6,4]); ctx.strokeStyle="#17211b"; ctx.lineWidth=1.5; ctx.stroke(); ctx.setLineDash([]); }
   line("bal", "#0e7a5f"); line("cum", "#e9a13b", [5,4]);
   ctx.beginPath(); pts.filter(p=>p.t>=chartData.yrs).forEach((p,i)=> i?ctx.lineTo(X(p.t),Y(p.bal)):ctx.moveTo(X(p.t),Y(p.bal))); ctx.strokeStyle="#c4553b"; ctx.lineWidth=2; ctx.stroke();
   const rx = X(chartData.yrs);
   ctx.beginPath(); ctx.setLineDash([4,4]); ctx.moveTo(rx,pad.t); ctx.lineTo(rx,pad.t+ih); ctx.strokeStyle="#c4553b"; ctx.stroke(); ctx.setLineDash([]);
   ctx.fillStyle="#c4553b"; ctx.fillText(`Retire ${chartData.retireYear}`, Math.min(rx+6, W-90), pad.t+12);
-  cv._pts = pts; cv._geom = {X, Y, pad, maxT, maxV};
+  cv._pts = pts; cv._mc = mc; cv._geom = {X, Y, pad, maxT, maxV};
 }
 $("chart").addEventListener("mousemove", e => {
   const cv = e.currentTarget, tip = $("tooltip"); if (!cv._pts) return;
   const rect = cv.getBoundingClientRect(), x = e.clientX - rect.left;
   const {X} = cv._geom;
-  let best = cv._pts[0], bd = 1e9;
-  for (const p of cv._pts){ const d = Math.abs(X(p.t)-x); if (d<bd){bd=d;best=p;} }
+  let best = cv._pts[0], bd = 1e9, bi = 0;
+  cv._pts.forEach((p,i) => { const d = Math.abs(X(p.t)-x); if (d<bd){bd=d;best=p;bi=i;} });
   tip.hidden = false;
-  tip.textContent = `${nowYear + Math.floor(best.t)}\nBalance: ${fmt.format(best.bal)}\nContributed: ${fmt.format(best.cum)}`;
-  tip.style.left = Math.min(x+14, rect.width-150)+"px"; tip.style.top = "12px";
+  tip.textContent = `${nowYear + Math.floor(best.t)}\nBalance: ${fmt.format(best.bal)}\nContributed: ${fmt.format(best.cum)}` + (cv._mc && cv._mc[bi] ? `\nSimulated median: ${fmt.format(cv._mc[bi].p50)}\nSimulated 10–90%: ${fmt.format(cv._mc[bi].p10)} – ${fmt.format(cv._mc[bi].p90)}` : "");
+  tip.style.left = Math.min(x+14, rect.width-170)+"px"; tip.style.top = "12px";
 });
 $("chart").addEventListener("mouseleave", () => $("tooltip").hidden = true);
 $("basisToday").onclick = () => { basis="today"; $("basisToday").classList.add("active"); $("basisNominal").classList.remove("active"); drawChart(); };
@@ -356,12 +442,12 @@ $("shareBtn").onclick = async () => {
   catch{ prompt("Copy your share link:", url); }
   setTimeout(() => $("shareBtn").textContent = "🔗 Copy share link", 1800);
 };
-$("resetBtn").onclick = () => { stickySolve = false; backfillMode = "monthly"; adoptShared(); localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
+$("resetBtn").onclick = () => { stickySolve = false; backfillMode = "monthly"; adoptShared(); localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, volBefore:14, volAfter:9, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
 $("backfillBtn").onclick = () => { if (!lastBackfill) return; adoptShared(); stickySolve = true; apply(lastBackfill); render(); };
 $("backfillMonthly").onclick = () => { backfillMode = "monthly"; stickySolve = false; render(); };
 $("backfillSavings").onclick = () => { backfillMode = "savings"; stickySolve = false; render(); };
 document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
-  const [a, c] = b.dataset.preset.split(","); adoptShared(); $("returnBefore").value = a; $("returnAfter").value = c; render();
+  const [a, c, vb, va] = b.dataset.preset.split(","); adoptShared(); $("returnBefore").value = a; $("returnAfter").value = c; $("volBefore").value = vb; $("volAfter").value = va; render();
 });
 for (const f of MONEY_FIELDS) $(f).addEventListener("input", e => formatMoneyInput(e.target));
 $("form").addEventListener("input", e => { adoptShared(); if (["currentSavings","monthlyContribution","desiredSpend"].includes(e.target.id)) stickySolve = false; render(); });
