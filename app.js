@@ -9,6 +9,7 @@ const compact = v => "$" + Intl.NumberFormat("en-US",{notation:"compact",maximum
 const mRate = annualPct => Math.pow(1 + annualPct/100, 1/12) - 1; // effective monthly
 
 let basis = "today", chartData = null, lastBackfill = null, backfillMode = "monthly", stickySolve = false, resolving = false, sharedView = false;
+let mcTimer = null, mcSeq = 0, mcCache = { key: null, value: null, has: false };
 
 /** Keep only digits and the first decimal point (commas, $, spaces, letters dropped). */
 function cleanMoney(s){
@@ -249,6 +250,68 @@ function syncPresets(){
     b.classList.toggle("active", Number($("returnBefore").value) === a && Number($("returnAfter").value) === c && Number($("volBefore").value) === vb && Number($("volAfter").value) === va);
   });
 }
+/** Monte Carlo runs ~1,000 paths × every month and takes hundreds of ms — far too
+ *  slow to run synchronously on every keystroke/slider tick. The deterministic
+ *  headline above is cheap and stays instant; only the MC is deferred: it runs
+ *  once, 200 ms after the last render, for the latest inputs only. Results are
+ *  cached by every input the simulation actually reads (R.san plus the derived
+ *  spend/cushion it is scored against), so renders that change nothing the MC
+ *  reads — e.g. flipping the back-fill toggle — reuse the last result instantly
+ *  instead of scheduling a recompute. While a recompute is pending the card
+ *  shows a calculating state rather than stale numbers for old inputs, and the
+ *  chart band is dropped until the fresh bands land. */
+const MC_DEBOUNCE_MS = 200;
+function mcKeyFor(R){
+  return JSON.stringify([R.san, R.yrs, R.contribMonths, R.incomeDelayMonths, R.totalSpendToday, R.cushionFuture]);
+}
+function applyMonteCarlo(MC, R, v){
+  if (!MC){
+    $("mcSuccessLabel").textContent = "Chance the headline spending lasts";
+    $("mcSuccess").textContent = "—";
+    $("mcSuccessNote").textContent = "of 1,000 simulated paths";
+    $("mcSpend85").textContent = "—";
+    $("mcMedianEnd").textContent = "—";
+    $("mcMedianEndNote").textContent = "in today's $";
+    $("mcDesiredOut").hidden = true;
+    return;
+  }
+  $("mcSuccessLabel").textContent = `Chance ${fmt.format(R.totalSpendToday)}/mo lasts ${v.retireYears} yrs`;
+  $("mcSuccess").textContent = Math.round(MC.success * 100) + "%";
+  $("mcSuccessNote").textContent = `of ${MC.trials.toLocaleString()} simulated paths`;
+  $("mcSpend85").textContent = fmt.format(MC.spend85);
+  $("mcMedianEnd").textContent = fmt.format(MC.medianEndToday);
+  $("mcMedianEndNote").textContent = `in today's $ · headline spend is solved to end near $0 · 10th pct leaves ${fmt.format(MC.p10EndToday)}`;
+  const dMC = $("mcDesiredOut");
+  if (MC.successDesired !== null){
+    dMC.hidden = false;
+    const pct = Math.round(MC.successDesired * 100);
+    dMC.textContent = MC.successDesired >= .999
+      ? `✅ Your desired ${fmt.format(v.desiredSpend)}/mo lasted in essentially all ${MC.trials.toLocaleString()} simulated paths — market swings at this volatility don't break it.`
+      : `🎲 Your desired ${fmt.format(v.desiredSpend)}/mo (today's $) lasted the full ${v.retireYears} years in ${pct}% of simulated paths. Spending ${fmt.format(MC.spend85)}/mo would have lasted in 85%.`;
+  } else dMC.hidden = true;
+}
+function showMonteCarloPending(R, v){
+  $("mcSuccessLabel").textContent = `Chance ${fmt.format(R.totalSpendToday)}/mo lasts ${v.retireYears} yrs`;
+  $("mcSuccess").textContent = "…";
+  $("mcSuccessNote").textContent = "calculating…";
+  $("mcSpend85").textContent = "…";
+  $("mcMedianEnd").textContent = "…";
+  $("mcMedianEndNote").textContent = "calculating 1,000 simulated paths…";
+  $("mcDesiredOut").hidden = true;
+}
+function scheduleMonteCarlo(R, v, key){
+  const seq = ++mcSeq;
+  clearTimeout(mcTimer);
+  mcTimer = setTimeout(() => {
+    mcTimer = null;
+    if (seq !== mcSeq) return; // a newer render superseded this one
+    const MC = monteCarlo(R);
+    mcCache = { key, value: MC, has: true };
+    applyMonteCarlo(MC, R, v);
+    if (chartData){ chartData.mc = MC ? MC.bands : null; drawChart(); }
+  }, MC_DEBOUNCE_MS);
+}
+
 
 function render(){
   const v = readInputs();
@@ -263,7 +326,7 @@ function render(){
   const contribEndYear = Math.round(nowYear + R.contribMonths/12);
   $("timeline").innerHTML =
     (R.contribMonths > 0 ? `<div class="tl save"><b>💰 ${nowYear}–${contribEndYear} · Saving</b><span>${fmt.format(v.monthlyContribution||0)}/mo for ${R.contribMonths/12} yrs</span></div>` : "") +
-    (R.contribMonths/12 < R.yrs ? `<div class="tl coast"><b>🌿 ${contribEndYear}–${R.retireYearEff} · Coasting</b><span>No contributions — compounding only</span></div>` : "") +
+    (R.contribMonths/12 < R.yrs ? `<div class="tl coast"><b>🌿 ${contribEndYear}–${R.retireYearEff} · Coasting</b><span>${R.contribMonths > 0 && (v.monthlyContribution||0) > 0 ? `Contributions stop in ${contribEndYear} — compounding only after that` : "No contributions — compounding only"}</span></div>` : "") +
     `<div class="tl spend"><b>🌅 ${R.retireYearEff}–${R.retireYearEff + (v.retireYears||0)} · Spending</b><span>${fmt.format(R.totalSpendToday)}/mo in today's $</span></div>`;
 
   $("vYears").textContent = v.retireYears;
@@ -278,22 +341,17 @@ function render(){
   $("swr").textContent = R.potToday > 0 ? (R.portfolioSpendToday*12 / R.potToday * 100).toFixed(1) + "%" : "—";
   const scen = d => compute({ ...v, returnBefore: (v.returnBefore||0) + d, returnAfter: (v.returnAfter||0) + d }).totalSpendToday;
   $("scenLow").textContent = fmt.format(scen(-2)); $("scenBase").textContent = fmt.format(R.totalSpendToday); $("scenHigh").textContent = fmt.format(scen(2));
-  const MC = monteCarlo(R);
-  if (MC){
-    $("mcSuccessLabel").textContent = `Chance ${fmt.format(R.totalSpendToday)}/mo lasts ${v.retireYears} yrs`;
-    $("mcSuccess").textContent = Math.round(MC.success * 100) + "%";
-    $("mcSuccessNote").textContent = `of ${MC.trials.toLocaleString()} simulated paths`;
-    $("mcSpend85").textContent = fmt.format(MC.spend85);
-    $("mcMedianEnd").textContent = fmt.format(MC.medianEndToday);
-    $("mcMedianEndNote").textContent = `in today's $ · headline spend is solved to end near $0 · 10th pct leaves ${fmt.format(MC.p10EndToday)}`;
-    const dMC = $("mcDesiredOut");
-    if (MC.successDesired !== null){
-      dMC.hidden = false;
-      const pct = Math.round(MC.successDesired * 100);
-      dMC.textContent = MC.successDesired >= .999
-        ? `✅ Your desired ${fmt.format(v.desiredSpend)}/mo lasted in essentially all ${MC.trials.toLocaleString()} simulated paths — market swings at this volatility don't break it.`
-        : `🎲 Your desired ${fmt.format(v.desiredSpend)}/mo (today's $) lasted the full ${v.retireYears} years in ${pct}% of simulated paths. Spending ${fmt.format(MC.spend85)}/mo would have lasted in 85%.`;
-    } else dMC.hidden = true;
+  const mcKey = mcKeyFor(R);
+  let MC = null;
+  if (mcCache.has && mcCache.key === mcKey){
+    mcSeq++;
+    clearTimeout(mcTimer);
+    mcTimer = null;
+    MC = mcCache.value;
+    applyMonteCarlo(MC, R, v);
+  } else {
+    showMonteCarloPending(R, v);
+    scheduleMonteCarlo(R, v, mcKey);
   }
   $("potFuture").textContent = fmt.format(R.potFuture);
   $("potToday").textContent = `= ${fmt.format(R.potToday)} in today's dollars`;
