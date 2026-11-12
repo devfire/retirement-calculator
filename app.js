@@ -143,14 +143,22 @@ function compute(raw){
     const desiredToday = Math.max(0, v.desiredSpend);
     let b = potFuture; desiredMonths = 0;
     if (incomeDelayMonths <= 0 && desiredToday <= otherIncome) desiredMonths = Infinity;
-    else while (desiredMonths < 1200){
-      const needToday = desiredMonths < incomeDelayMonths ? desiredToday : Math.max(0, desiredToday - otherIncome);
-      const w = needToday * Math.pow(1+inf, monthsRet + desiredMonths);
-      if (b < w) break;
-      const bNext = (b - w) * (1 + rA);
-      // Longevity counts only months that leave the cushion intact at month-end.
-      if (cushionToday > 0 && bNext < cushionToday * Math.pow(1+inf, monthsRet + desiredMonths + 1) - 1) break;
-      b = bNext; desiredMonths++;
+    else {
+      // The cushion is due only at the end of the horizon, not at every month-end:
+      // with a positive real return the pot can sit below the cushion's face value
+      // early on and still grow into it (its PV, cushionPVToday, is what the solver
+      // reserves). So pay spending until the money runs out, and report the longest
+      // horizon whose end balance still meets the cushion. Checking every month-end
+      // and stopping at the first dip reported 0 months for fully funded plans.
+      let cushionMonths = cushionToday > 0 ? 0 : null;
+      while (desiredMonths < 1200){
+        const needToday = desiredMonths < incomeDelayMonths ? desiredToday : Math.max(0, desiredToday - otherIncome);
+        const w = needToday * Math.pow(1+inf, monthsRet + desiredMonths);
+        if (b < w) break;
+        b = (b - w) * (1 + rA); desiredMonths++;
+        if (cushionToday > 0 && b >= cushionToday * Math.pow(1+inf, monthsRet + desiredMonths) - 1) cushionMonths = desiredMonths;
+      }
+      if (cushionMonths !== null) desiredMonths = cushionMonths;
     }
   }
   // Gap solver: what pot does the desired spend need, and what closes any shortfall?
