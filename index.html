@@ -30,6 +30,7 @@
     </div>
 
     <div class="plan-fields">
+      <div class="input-pane">
       <fieldset>
         <legend>Starting point &amp; contributions</legend>
         <div class="field-row">
@@ -60,7 +61,9 @@
           <small class="hint">Scale runs from today to retirement. The pot compounds without contributions outside this window.</small>
         </div>
       </fieldset>
+      </div>
 
+      <div class="input-pane">
       <fieldset>
         <legend>Retirement income &amp; goals <em>(optional)</em></legend>
         <div class="field-row">
@@ -93,6 +96,8 @@
           </div>
         </div>
       </fieldset>
+      </div>
+      <div class="input-pane">
       <fieldset>
         <legend>Spending guardrails <em>(optional — Monte Carlo only)</em></legend>
         <label class="field check-field"><input id="guardrailEnabled" type="checkbox"> <span>Cut spending after a down year</span></label>
@@ -113,7 +118,9 @@
         </div>
         <small class="hint">Each retirement anniversary, sustainable spending is re-solved from the actual pot over the years left. Raises go fully to the re-solved level; cuts close only the chosen share of the gap per year; changes under the threshold are ignored — gradual on purpose, to avoid whipsawing. Neither strategy here is Guyton-Klinger proper (see notes under the results).</small>
       </fieldset>
+      </div>
 
+      <div class="input-pane">
       <fieldset>
         <legend>Market &amp; horizon assumptions</legend>
         <div class="presets" role="group" aria-label="Growth presets">
@@ -149,6 +156,7 @@
           <div class="slider-row"><input id="retireYears" type="range" min="5" max="50" step="1" value="30"><output id="retireYearsOut">30 yrs</output></div>
         </label>
       </fieldset>
+      </div>
     </div>
     <p class="warn" id="warn" hidden></p>
     <p class="fineprint">Assumes contributions &amp; spending at the start of each month, monthly compounding, constant returns/inflation for the headline result (Monte Carlo varies returns randomly). Gross of tax &amp; fees — illustration, not financial advice. Everything runs in your browser.</p>

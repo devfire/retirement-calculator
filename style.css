@@ -14,6 +14,11 @@
 .plan-fields{display:grid;gap:0}
 .plan-fields fieldset{border:0;border-bottom:1px solid var(--border);padding:18px 0 8px;margin:0;background:transparent;min-width:0}
 .plan-fields fieldset:last-child{border-bottom:0;padding-bottom:2px}
+.input-pane{background:#eef7f2;border:1px solid #c6e2d4;border-radius:12px;padding:16px 14px 4px;margin:14px 0 8px}
+.input-pane fieldset{border-bottom:0;padding:10px 0 2px}
+.input-pane .field input[type=number],.input-pane .field input[type=text],.input-pane .money,.input-pane .pct,.input-pane .range-years input{background:var(--surface)}
+.input-pane .solver{background:var(--surface)}
+.input-pane .presets button{background:var(--surface)}
 legend{font-weight:700;font-size:12px;text-transform:uppercase;letter-spacing:.07em;color:var(--accent);padding:0;margin-bottom:12px;display:block;width:100%}
 legend em{font-weight:500;color:var(--muted);font-style:normal;text-transform:none;letter-spacing:0}
 .field-row{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;align-items:start}
