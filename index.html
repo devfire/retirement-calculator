@@ -44,10 +44,18 @@
         <label class="field"><span>Monthly contribution</span>
           <div class="money"><i>$</i><input id="monthlyContribution" type="text" inputmode="decimal" value="0"></div>
         </label>
-        <label class="field"><span>Contribute for (years)</span>
-          <div class="slider-row"><input id="contribYears" type="range" min="0" max="40" step="0.5" value="5"><output id="contribYearsOut">5 yrs</output></div>
-          <small class="hint">After this, contributions stop and the pot coasts until retirement. Set equal to “years to retirement” to contribute all the way.</small>
-        </label>
+        <div class="field"><span>Contribution window <em>(drag either end)</em></span>
+          <div class="range-dual" id="contribRange">
+            <input id="contribStartYear" type="range" step="1" min="2026" max="2036" value="2026" aria-label="Contribution start year">
+            <input id="contribEndYear" type="range" step="1" min="2026" max="2036" value="2031" aria-label="Contribution end year">
+          </div>
+          <div class="range-meta"><output id="contribRangeOut">2026 – 2031</output><span id="contribRangeDur">5 yrs of contributions</span></div>
+          <div class="range-years">
+            <label>Start <input id="contribStartYearNum" type="number" step="1" aria-label="Contribution start year (number)"></label>
+            <label>End <input id="contribEndYearNum" type="number" step="1" aria-label="Contribution end year (number)"></label>
+          </div>
+          <small class="hint">Scale runs from today to your target retirement year. Contributions start in the start year and stop at the start of the end year; the pot coasts outside the window. Drag an end all the way across to make the window empty.</small>
+        </div>
         <label class="field"><span>Contribution increase / year <em>(optional)</em></span>
           <div class="pct"><input id="contribGrowth" type="number" step="0.1" value="0"><i>%</i></div>
         </label>

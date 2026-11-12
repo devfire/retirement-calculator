@@ -1,6 +1,6 @@
 "use strict";
 const $ = id => document.getElementById(id);
-const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribYears","contribGrowth","returnBefore","returnAfter","volBefore","volAfter","inflation","retireYears","otherIncome","otherIncomeStartYear","desiredEndAmount","desiredSpend"];
+const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribStartYear","contribEndYear","contribGrowth","returnBefore","returnAfter","volBefore","volAfter","inflation","retireYears","otherIncome","otherIncomeStartYear","desiredEndAmount","desiredSpend"];
 const MONEY_FIELDS = ["currentSavings","monthlyContribution","otherIncome","desiredEndAmount","desiredSpend"];
 const nowYear = new Date().getFullYear();
 const fmt = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
@@ -53,7 +53,7 @@ function compute(raw){
     currentSavings: Math.max(0, num(raw.currentSavings)), monthlyContribution: Math.max(0, num(raw.monthlyContribution)),
     otherIncome: Math.max(0, num(raw.otherIncome)), otherIncomeStartYear: Number.isFinite(raw.otherIncomeStartYear) ? Math.round(raw.otherIncomeStartYear) : NaN, desiredEndAmount: Math.max(0, num(raw.desiredEndAmount)), desiredSpend: raw.desiredSpend,
     retireYear: Math.min(retireYearIn, nowYear + 60), retireYears: clamp(num(raw.retireYears), 0, 60),
-    contribYears: clamp(num(raw.contribYears), 0, 60), contribGrowth: clamp(num(raw.contribGrowth), -20, 50),
+    contribGrowth: clamp(num(raw.contribGrowth), -20, 50),
     returnBefore: clamp(num(raw.returnBefore), -50, 30), returnAfter: clamp(num(raw.returnAfter), -50, 30),
     volBefore: clamp(num(raw.volBefore), 0, 40), volAfter: clamp(num(raw.volAfter), 0, 40),
     inflation: clamp(num(raw.inflation), -10, 30) };
@@ -63,10 +63,18 @@ function compute(raw){
   const retireYearEff = Math.max(v.retireYear, nowYear);
   const yearsToRetire = retireYearEff - nowYear;
   if (v.retireYear < nowYear) warns.push("Retirement year is in the past — results below assume retiring now.");
-  if (v.contribYears > yearsToRetire) warns.push(`Contribution duration (${v.contribYears}y) exceeds time to retirement (${yearsToRetire}y) — capped at retirement.`);
+  // Contribution window [start, end) in calendar years, on a today→retirement scale.
+  // Contributions run for the months from the start year up to (not including) the end year.
+  const startIn = Math.round(num(raw.contribStartYear, nowYear)), endIn = Math.round(num(raw.contribEndYear, retireYearEff));
+  v.contribStartYear = clamp(startIn, nowYear, retireYearEff);
+  v.contribEndYear = clamp(endIn, nowYear, retireYearEff);
+  if (v.contribStartYear !== startIn || v.contribEndYear !== endIn) warns.push(`Contribution window (${startIn}–${endIn}) sits outside today–retirement (${nowYear}–${retireYearEff}) — capped to that range.`);
+  if (v.contribEndYear < v.contribStartYear){ v.contribEndYear = v.contribStartYear; warns.push("Contribution end year was before its start year — set equal to the start year (no contributions)."); }
   const yrs = yearsToRetire;
   const monthsRet = Math.round(yrs * 12);
-  const contribMonths = Math.round(Math.min(v.contribYears, yrs) * 12);
+  const contribStartMonths = (v.contribStartYear - nowYear) * 12;
+  const contribEndMonths = (v.contribEndYear - nowYear) * 12;
+  const contribMonths = contribEndMonths - contribStartMonths;
   const rB = mRate(v.returnBefore), rA = mRate(v.returnAfter), inf = mRate(v.inflation);
   const inflAnnual = v.inflation/100;
 
@@ -75,7 +83,7 @@ function compute(raw){
   const points = [{t:0, bal, cum: bal, cumReal: bal}]; // yearly snapshots for chart
   for (let m = 0; m < monthsRet; m++){
     let c = 0;
-    if (m < contribMonths){ c = (v.monthlyContribution||0) * Math.pow(1 + (v.contribGrowth||0)/100, Math.floor(m/12)); bal += c; totalContrib += c; totalContribReal += c / Math.pow(1+inf, m); }
+    if (m >= contribStartMonths && m < contribEndMonths){ c = (v.monthlyContribution||0) * Math.pow(1 + (v.contribGrowth||0)/100, Math.floor((m - contribStartMonths)/12)); bal += c; totalContrib += c; totalContribReal += c / Math.pow(1+inf, m); }
     const g = bal * rB; bal += g;
     if ((m+1) % 12 === 0 || m === monthsRet-1) points.push({t:(m+1)/12, bal, cum:(v.currentSavings||0)+totalContrib, cumReal: totalContribReal});
   }
@@ -161,13 +169,13 @@ function compute(raw){
       // backfillPlan writes (monthly + extra) back into that field. Adding it flat
       // here would understate the slope whenever growth ≠ 0 and the solved amount
       // would overshoot, then bounce instead of settling on the target.
-      const potFor = extra => { let b = v.currentSavings; for (let m = 0; m < monthsRet; m++){ if (m < contribMonths) b += (v.monthlyContribution + extra) * Math.pow(1 + v.contribGrowth/100, Math.floor(m/12)); b *= 1 + rB; } return b; };
+      const potFor = extra => { let b = v.currentSavings; for (let m = 0; m < monthsRet; m++){ if (m >= contribStartMonths && m < contribEndMonths) b += (v.monthlyContribution + extra) * Math.pow(1 + v.contribGrowth/100, Math.floor((m - contribStartMonths)/12)); b *= 1 + rB; } return b; };
       const slope = potFor(1) - potFor(0);
       if (slope > 0) extraMonthly = (targetFuture - potFuture) / slope;
     }
     gap = { requiredPotToday, shortfallToday, extraMonthly, lumpToday };
   }
-  return {warns, yrs, contribMonths, potFuture, potToday, growthEarned, totalContrib, retireYearEff, gap, san: v, incomeDelayMonths,
+  return {warns, yrs, contribMonths, contribStartMonths, contribEndMonths, potFuture, potToday, growthEarned, totalContrib, retireYearEff, gap, san: v, incomeDelayMonths,
           portfolioSpendToday, totalSpendToday, points, desiredMonths, rReal, cushionToday, cushionFuture, cushionPVToday, endBalanceFuture: N > 0 ? bal : potFuture};
 }
 
@@ -190,7 +198,7 @@ function monteCarlo(R){
   const muA = Math.log(1 + v.returnAfter/100)/12, sigA = (v.volAfter||0)/100/Math.sqrt(12);
   const inflAnnual = v.inflation/100, delay = R.incomeDelayMonths, income = v.otherIncome||0, spend = R.totalSpendToday;
   const contribAmt = new Float64Array(monthsRet), inflRet = new Float64Array(N); // per-month constants, hoisted out of the trial loop
-  for (let m = 0; m < monthsRet; m++) contribAmt[m] = m < contribMonths ? (v.monthlyContribution||0) * Math.pow(1 + (v.contribGrowth||0)/100, Math.floor(m/12)) : 0;
+  for (let m = 0; m < monthsRet; m++) contribAmt[m] = m >= R.contribStartMonths && m < R.contribEndMonths ? (v.monthlyContribution||0) * Math.pow(1 + (v.contribGrowth||0)/100, Math.floor((m - R.contribStartMonths)/12)) : 0;
   for (let m = 0; m < N; m++) inflRet[m] = Math.pow(1 + inflAnnual, (monthsRet + m)/12);
   let state = 0x9e3779b9, spare = null;
   const rng = () => { state |= 0; state = state + 0x6D2B79F5 | 0; let t = Math.imul(state ^ state >>> 15, 1 | state); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
@@ -326,20 +334,38 @@ function scheduleMonteCarlo(R, v, key){
 }
 
 
+/** Sync the dual-thumb contribution window to the sanitized plan: scale is
+ *  today → retirement, thumbs and number boxes show the clamped [start, end). */
+function syncContributionWindow(R){
+  const s = R.san.contribStartYear, e = R.san.contribEndYear, span = Math.max(1, R.retireYearEff - nowYear);
+  for (const id of ["contribStartYear","contribEndYear","contribStartYearNum","contribEndYearNum"]){
+    const el = $(id); el.min = nowYear; el.max = R.retireYearEff; el.disabled = R.yrs === 0;
+  }
+  if (document.activeElement !== $("contribStartYear")) $("contribStartYear").value = s;
+  if (document.activeElement !== $("contribEndYear")) $("contribEndYear").value = e;
+  if (document.activeElement !== $("contribStartYearNum")) $("contribStartYearNum").value = s;
+  if (document.activeElement !== $("contribEndYearNum")) $("contribEndYearNum").value = e;
+  $("contribRange").style.setProperty("--lo", ((s - nowYear)/span*100) + "%");
+  $("contribRange").style.setProperty("--hi", ((e - nowYear)/span*100) + "%");
+  $("contribRangeOut").textContent = `${s} – ${e}`;
+  const dur = R.contribMonths/12;
+  $("contribRangeDur").textContent = dur > 0 ? `${dur} yr${dur === 1 ? "" : "s"} of contributions` : "No contributions";
+}
+
 function render(){
   const v = readInputs();
   const R = compute(v);
   syncPresets();
-  $("contribYearsOut").textContent = `${v.contribYears} yrs`;
+  syncContributionWindow(R);
   $("retireYearsOut").textContent = `${v.retireYears} yrs`;
   $("yearsHint").textContent = R.yrs > 0 ? `${R.yrs} year${R.yrs===1?"":"s"} from now (${nowYear} → ${R.retireYearEff})` : "Retiring now.";
   $("warn").hidden = R.warns.length === 0; $("warn").textContent = R.warns.join(" ");
-  $("contribYears").max = Math.max(40, Math.ceil(R.yrs), Math.ceil(R.san.contribYears));
 
-  const contribEndYear = Math.round(nowYear + R.contribMonths/12);
+  const cStart = R.san.contribStartYear, cEnd = R.san.contribEndYear;
   $("timeline").innerHTML =
-    (R.contribMonths > 0 ? `<div class="tl save"><b>💰 ${nowYear}–${contribEndYear} · Saving</b><span>${fmt.format(v.monthlyContribution||0)}/mo for ${R.contribMonths/12} yrs</span></div>` : "") +
-    (R.contribMonths/12 < R.yrs ? `<div class="tl coast"><b>🌿 ${contribEndYear}–${R.retireYearEff} · Coasting</b><span>${R.contribMonths > 0 && (v.monthlyContribution||0) > 0 ? `Contributions stop in ${contribEndYear} — compounding only after that` : "No contributions — compounding only"}</span></div>` : "") +
+    (R.contribMonths > 0 && R.contribStartMonths > 0 ? `<div class="tl coast"><b>🌿 ${nowYear}–${cStart} · Coasting</b><span>Contributions start in ${cStart} — compounding only until then</span></div>` : "") +
+    (R.contribMonths > 0 ? `<div class="tl save"><b>💰 ${cStart}–${cEnd} · Saving</b><span>${fmt.format(v.monthlyContribution||0)}/mo for ${R.contribMonths/12} yrs</span></div>` : "") +
+    (R.contribEndMonths < R.yrs * 12 ? `<div class="tl coast"><b>🌿 ${R.contribMonths > 0 ? cEnd : nowYear}–${R.retireYearEff} · Coasting</b><span>${R.contribMonths > 0 && (v.monthlyContribution||0) > 0 ? `Contributions stop in ${cEnd} — compounding only after that` : "No contributions — compounding only"}</span></div>` : "") +
     `<div class="tl spend"><b>🌅 ${R.retireYearEff}–${R.retireYearEff + (v.retireYears||0)} · Spending</b><span>${fmt.format(R.totalSpendToday)}/mo in today's $</span></div>`;
 
   $("vYears").textContent = v.retireYears;
@@ -443,7 +469,7 @@ function render(){
   }
 
 
-  chartData = {points: R.points, yrs: R.yrs, contribT: R.contribMonths/12, retireYear: R.retireYearEff, inflation: R.san.inflation/100, mc: MC ? MC.bands : null};
+  chartData = {points: R.points, yrs: R.yrs, contribStartT: R.contribStartMonths/12, contribT: R.contribEndMonths/12, retireYear: R.retireYearEff, inflation: R.san.inflation/100, mc: MC ? MC.bands : null};
   drawChart();
   save(v);
 }
@@ -469,7 +495,8 @@ function drawChart(animate = true){
   const g = svg.selectAll("g.root").data([null]).join("g").attr("class", "root");
   // Phase bands: saving / coasting / spending
   const phases = [
-    { x0: 0, x1: chartData.contribT, label: "💰 Saving", fill: "rgba(14,122,95,.07)" },
+    { x0: 0, x1: chartData.contribStartT, label: "🌿 Coasting", fill: "rgba(233,161,59,.10)" },
+    { x0: chartData.contribStartT, x1: chartData.contribT, label: "💰 Saving", fill: "rgba(14,122,95,.07)" },
     { x0: chartData.contribT, x1: chartData.yrs, label: "🌿 Coasting", fill: "rgba(233,161,59,.10)" },
     { x0: chartData.yrs, x1: maxT, label: "🌅 Spending", fill: "rgba(196,85,59,.06)" }
   ].filter(p => p.x1 > p.x0);
@@ -507,7 +534,7 @@ function drawChart(animate = true){
     .on("mousemove", function(event){
       const [px] = d3.pointer(event), t = x.invert(px);
       let bi = 0, bd = 1e9; pts.forEach((p, i) => { const d = Math.abs(p.t - t); if (d < bd){ bd = d; bi = i; } });
-      const p = pts[bi], phase = p.t < chartData.contribT ? "Saving" : p.t < chartData.yrs ? "Coasting" : "Spending";
+      const p = pts[bi], phase = p.t < chartData.yrs && p.t >= chartData.contribStartT && p.t < chartData.contribT ? "Saving" : p.t < chartData.yrs ? "Coasting" : "Spending";
       ch.attr("opacity", 1); ch.select("line").attr("x1", x(p.t)).attr("x2", x(p.t)); ch.select("circle").attr("cx", x(p.t)).attr("cy", y(Math.max(0, p.bal)));
       tip.hidden = false;
       tip.textContent = `${nowYear + Math.floor(p.t)} · ${phase}\nBalance: ${fmt.format(p.bal)}\nContributed: ${fmt.format(p.cum)}\nBalance vs contributed: ${fmt.format(p.growth)}` + (showMC && mc && mc[bi] ? `\nSimulated median: ${fmt.format(mc[bi].p50)}\nSimulated 10–90%: ${fmt.format(mc[bi].p10)} – ${fmt.format(mc[bi].p90)}` : "");
@@ -568,9 +595,20 @@ function adoptShared(){
   sharedView = false;
   try{ history.replaceState(null, "", location.href.split("#")[0]); }catch{}
 }
-function apply(obj){ for (const f of FIELDS) if (obj[f] !== undefined && obj[f] !== null && !Number.isNaN(obj[f])){ if (f === "contribYears") $("contribYears").max = Math.max(40, obj[f]); $(f).value = MONEY_FIELDS.includes(f) ? formatMoneyString(obj[f]) : obj[f]; } }
+function apply(obj){
+  const o = { ...obj };
+  // Legacy plans (saved/shared before the window slider) carried a duration from today.
+  if (o.contribStartYear === undefined && o.contribEndYear === undefined && Number.isFinite(Number(o.contribYears)) && o.contribYears !== null && o.contribYears !== ""){
+    o.contribStartYear = nowYear; o.contribEndYear = nowYear + Number(o.contribYears);
+  }
+  for (const id of ["contribStartYear","contribEndYear"]){ $(id).min = nowYear; $(id).max = Math.max(nowYear + 60, Number(o.contribEndYear) || 0, Number(o.retireYear) || 0); }
+  for (const f of FIELDS) if (o[f] !== undefined && o[f] !== null && !Number.isNaN(o[f])) $(f).value = MONEY_FIELDS.includes(f) ? formatMoneyString(o[f]) : o[f];
+}
 function load(){
   $("retireYear").value = nowYear + 10;
+  // Set the scale before the values: a range input still at its default max would clamp them.
+  for (const id of ["contribStartYear","contribEndYear"]){ $(id).min = nowYear; $(id).max = nowYear + 60; }
+  $("contribStartYear").value = nowYear; $("contribEndYear").value = nowYear + 5;
   try{
     if (location.hash.length > 1){ sharedView = true; apply(JSON.parse(decodeURIComponent(location.hash.slice(1)))); }
     else { const s = localStorage.getItem("retireplan-v1"); if (s) apply(JSON.parse(s)); }
@@ -583,7 +621,7 @@ $("shareBtn").onclick = async () => {
   catch{ prompt("Copy your share link:", url); }
   setTimeout(() => $("shareBtn").textContent = "🔗 Copy share link", 1800);
 };
-$("resetBtn").onclick = () => { stickySolve = false; backfillMode = "monthly"; adoptShared(); localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribYears:5, contribGrowth:0, returnBefore:7, returnAfter:4.5, volBefore:14, volAfter:9, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
+$("resetBtn").onclick = () => { stickySolve = false; backfillMode = "monthly"; adoptShared(); localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribStartYear:nowYear, contribEndYear:nowYear+5, contribGrowth:0, returnBefore:7, returnAfter:4.5, volBefore:14, volAfter:9, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
 $("backfillBtn").onclick = () => { if (!lastBackfill) return; adoptShared(); stickySolve = true; apply(lastBackfill); render(); };
 $("backfillMonthly").onclick = () => { backfillMode = "monthly"; stickySolve = false; render(); };
 $("backfillSavings").onclick = () => { backfillMode = "savings"; stickySolve = false; render(); };
@@ -591,6 +629,15 @@ document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
   const [a, c, vb, va] = b.dataset.preset.split(","); adoptShared(); $("returnBefore").value = a; $("returnAfter").value = c; $("volBefore").value = vb; $("volAfter").value = va; render();
 });
 for (const f of MONEY_FIELDS) $(f).addEventListener("input", e => formatMoneyInput(e.target));
+// Dual-thumb clamping: the dragged end stops at the other end (window can empty, never invert).
+// These run on the target before the form-level render, so compute() sees a valid window.
+$("contribStartYear").addEventListener("input", e => { if (+e.target.value > +$("contribEndYear").value) e.target.value = $("contribEndYear").value; });
+$("contribEndYear").addEventListener("input", e => { if (+e.target.value < +$("contribStartYear").value) e.target.value = $("contribStartYear").value; });
+$("contribStartYearNum").addEventListener("input", e => { if (e.target.value !== ""){ $("contribStartYear").value = e.target.value; if (+$("contribStartYear").value > +$("contribEndYear").value) $("contribStartYear").value = $("contribEndYear").value; } });
+$("contribEndYearNum").addEventListener("input", e => { if (e.target.value !== ""){ $("contribEndYear").value = e.target.value; if (+$("contribEndYear").value < +$("contribStartYear").value) $("contribEndYear").value = $("contribStartYear").value; } });
+// Both thumbs stacked at one year: the end thumb sits on top, so dragging expands/shrinks
+// from the end; the start thumb stays reachable by keyboard and via its number box.
+$("contribStartYear").style.zIndex = 3; $("contribEndYear").style.zIndex = 4;
 $("form").addEventListener("input", e => { adoptShared(); if (["currentSavings","monthlyContribution","desiredSpend"].includes(e.target.id)) stickySolve = false; render(); });
 addEventListener("resize", () => { drawChart(false); if (lastMcVis) drawMcChart(lastMcVis.MC, lastMcVis.R, false); });
 $("retireYear").max = nowYear + 60;

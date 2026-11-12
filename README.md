@@ -8,7 +8,8 @@ and offline use keep working. It answers one question:
 
 Its distinguishing feature: **the contribution period and the retirement date
 are separate clocks.** Most calculators assume you contribute every month
-until the day you retire. This one models stopping early and coasting.
+until the day you retire. This one lets you pick the exact years you
+contribute — start later, stop early, and coast in between.
 
 ## Quick start
 
@@ -47,8 +48,8 @@ inflation, retirement in 10 years):
 | Current savings | What you have invested today |
 | Target retirement year | When withdrawals start; contributions may end long before |
 | Monthly contribution | Amount added at the start of each month |
-| Contribute for (years) | **The unique bit.** After this, contributions stop and the pot coasts. Set equal to years-to-retirement to contribute all the way |
-| Contribution increase / year | Optional annual escalation of the contribution |
+| Contribution window | **The unique bit.** A dual-ended slider on a today→retirement scale: drag either end (or type the years) to set when contributions start and when they stop. Contributions run from the start year up to the end year; the pot coasts before and after. Set start = today and end = retirement year to contribute all the way; collapse both ends to one year for no contributions |
+| Contribution increase / year | Optional annual escalation of the contribution, starting from the first year of the contribution window |
 | Investment growth before retirement | Expected nominal return while accumulating |
 | Growth in retirement | Usually lower (more bonds/cash); drives the drawdown |
 | Inflation | Used to restate everything in today's purchasing power |
@@ -74,12 +75,12 @@ them individually afterwards.
 - **Pot at retirement** in future dollars and today's dollars, what you put
   in, what growth added, and the **inflation bite** (purchasing power lost
   while waiting to retire).
-- **Balance-over-time chart** (D3, animated as you type) with Saving /
-  Coasting / Spending phase bands, a crosshair hover (balance, contributed,
+- **Balance-over-time chart** (D3, animated as you type) with Coasting /
+  Saving / Coasting / Spending phase bands reflecting the contribution
+  window, a crosshair hover (balance, contributed,
   balance-vs-contributed, Monte Carlo median/band), a today-$ / future-$
   toggle, clickable legend entries, and a **Balance / What built it** view
   that stacks contributions vs. growth up to the balance line.
-- **Sensitivity bars** under the ±2% scenarios, scaled to the largest.
 - **Monte Carlo card** — 1,000 simulated market paths with randomly varying
   monthly returns: the chance the headline spending lasts the full
   retirement, the spending that would have lasted in 85% of paths, the
@@ -101,8 +102,8 @@ Enter "Spending you'd like" and the app reports how many years that level
 actually lasts. If it falls short, it also computes:
 
 - the pot (today-$) that spending level would require, and the shortfall;
-- what closes the gap: **extra $/mo during your contribution phase**, or a
-  **lump sum today** (only the lump sum is offered if contributions are 0).
+- what closes the gap: **extra $/mo during your contribution window**, or a
+  **lump sum today** (only the lump sum is offered if the window is empty).
 
 **Back-fill** turns that advice into the plan itself. A back-fill row sits
 under the field whenever a portfolio-funded desired spend is entered, with a
@@ -114,7 +115,7 @@ typed it. It works in **both directions**: raise “Spending you'd like” and
 it tops the input up, lower it and it trims the input back down (floored at
 $0), so you can iterate on the target freely — the button never disables or
 changes label. Values are rounded up to the nearest $10 so rounding can't
-reopen a gap. (If contributions have already ended, the monthly side has no
+reopen a gap. (If the contribution window is empty, the monthly side has no
 lever, so the difference lands on current savings instead — the preview
 shows which field will change. If one input alone already funds more than a
 lowered target even at $0, the hint says so.)
@@ -179,8 +180,10 @@ income amount itself is unchanged.
 - Inputs are clamped to sane ranges (returns −50%…30%, inflation −10%…30%,
   volatility 0…40%, non-negative money) with an on-page warning, so extreme
   entries can't produce `NaN` results. A retirement year in the past is
-  treated as "retire now"; a contribution period longer than the time to
-  retirement is capped at retirement.
+  treated as "retire now"; a contribution window outside today→retirement is
+  capped to that scale (changing the retirement year rescales the slider and
+  clamps the window with it). Saved plans and share links from the old
+  “Contribute for (years)” duration are migrated to a window starting today.
 ## Privacy & persistence
 
 - All computation runs locally in your browser; nothing is sent anywhere.
