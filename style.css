@@ -67,9 +67,11 @@ legend em{font-weight:500;color:var(--muted);font-style:normal;text-transform:no
 .verdict-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}.verdict-grid>div{background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);border-radius:12px;padding:12px 14px}.verdict-grid span{display:block;font-size:11.5px;color:#98cdb8;margin-bottom:2px}.verdict-grid strong{font-size:19px;display:block;letter-spacing:-.01em}.verdict-grid small{display:block;color:#98cdb8;font-size:11px;margin-top:2px}
 .desired{background:rgba(255,255,255,.1);border:1px solid rgba(255,255,255,.14);border-radius:10px;padding:10px 14px;font-size:13.5px;margin:16px 0 0;line-height:1.45}
 /* Section headers */
-.section-intro{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;flex-wrap:wrap;margin-bottom:16px}
-.step-tag{display:inline-block;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:var(--accent);margin-bottom:2px}
-.section-intro h2{margin:0;font-size:19px;letter-spacing:-.015em}
+
+.journey-card{padding:20px 22px}
+.journey-card .chart-toggles{margin:14px 0}
+.risk-card .inputs-head{margin-bottom:16px}
+.journey-card .tl,.journey-card .stat-grid{background:#eef7f2;border-color:#c6e2d4}
 /* Act II: Journey (Timeline + Stats + Chart) */
 .timeline{display:flex;gap:10px;margin:0 0 14px;flex-wrap:wrap}
 .tl{flex:1;min-width:170px;border-radius:12px;padding:11px 14px;background:var(--surface-soft);border:1px solid var(--border);border-left-width:4px}

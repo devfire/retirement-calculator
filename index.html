@@ -183,18 +183,16 @@
 
     <!-- Act II: How Your Plan Unfolds -->
     <div class="card journey-card">
-      <div class="section-intro">
-        <div>
-          <span class="step-tag">The Journey</span>
-          <h2>How your savings build, coast, and fund retirement</h2>
+      <div class="inputs-head">
+        <h2>The Journey</h2>
+        <small>How your savings build, coast, and fund retirement</small>
+      </div>
+      <div class="chart-toggles">
+        <div class="toggle" role="group" aria-label="Chart view">
+          <button type="button" id="viewBalance" class="active">Balance</button><button type="button" id="viewComposition">What built it</button>
         </div>
-        <div class="chart-toggles">
-          <div class="toggle" role="group" aria-label="Chart view">
-            <button type="button" id="viewBalance" class="active">Balance</button><button type="button" id="viewComposition">What built it</button>
-          </div>
-          <div class="toggle" role="group" aria-label="Dollars basis">
-            <button type="button" id="basisToday" class="active">Today's $</button><button type="button" id="basisNominal">Future $</button>
-          </div>
+        <div class="toggle" role="group" aria-label="Dollars basis">
+          <button type="button" id="basisToday" class="active">Today's $</button><button type="button" id="basisNominal">Future $</button>
         </div>
       </div>
 
@@ -213,11 +211,9 @@
 
     <!-- Act III: Stress-Testing the Plan -->
     <div class="card risk-card">
-      <div class="section-intro">
-        <div>
-          <span class="step-tag">Stress Test</span>
-          <h2>How resilient is this spending against market uncertainty?</h2>
-        </div>
+      <div class="inputs-head">
+        <h2>Stress Test</h2>
+        <small>How resilient is this spending against market uncertainty?</small>
       </div>
 
       <div class="risk-split">
