@@ -63,8 +63,11 @@ function compute(raw){
     guardrailCut: clamp(num(raw.guardrailCut, 10), 0, 50), guardrailEnabled: raw.guardrailEnabled ? 1 : 0,
     riskMinChange: clamp(num(raw.riskMinChange, 5), 0, 50), riskCutStep: clamp(num(raw.riskCutStep, 10), 1, 100), riskGuardEnabled: raw.riskGuardEnabled ? 1 : 0,
     inflation: clamp(num(raw.inflation), -10, 30) };
-  const clamped = ["returnBefore","returnAfter","inflation","contribGrowth","volBefore","volAfter","mcSuccessTarget"].some(k => v[k] !== num(raw[k]));
-  const warns = clamped ? ["Some assumptions were outside sane ranges and were clamped (−50%…30% returns, −10%…30% inflation, 0…40% volatility, 1…99% Monte Carlo success target)."] : [];
+  const clampRanges = { returnBefore:[-50,30], returnAfter:[-50,30], inflation:[-10,30], contribGrowth:[-20,50], volBefore:[0,40], volAfter:[0,40], mcSuccessTarget:[1,99], guardrailCut:[0,50], riskMinChange:[0,50], riskCutStep:[1,100], retireYears:[0,60] };
+  // Warn only on an actual clamp: a blank (non-finite) input falls back to its
+  // default silently, and in-range rounding (e.g. a fractional MC target) is not clamping.
+  const clamped = Object.entries(clampRanges).some(([k, [lo, hi]]) => Number.isFinite(raw[k]) && (raw[k] < lo || raw[k] > hi));
+  const warns = clamped ? ["Some assumptions were outside sane ranges and were clamped (−50%…30% returns, −10%…30% inflation, −20%…50% contribution growth, 0…40% volatility, 1…99% Monte Carlo success target, 0…50% guardrail cuts, 1…100% risk step, 0…60 retirement years)."] : [];
   if (v.retireYear !== retireYearIn) warns.push(`Retirement year is more than 60 years away — clamped to ${nowYear + 60}.`);
   const retireYearEff = Math.max(v.retireYear, nowYear);
   const yearsToRetire = retireYearEff - nowYear;
