@@ -78,13 +78,18 @@
             <div class="money"><i>$</i><input id="desiredEndAmount" type="text" inputmode="decimal" value="0"></div>
             <small class="hint">Reserved in today's purchasing power after the final retirement year.</small>
           </label>
-          <label class="field"><span>Target spending <em>($/mo)</em></span>
-            <div class="money"><i>$</i><input id="desiredSpend" type="text" inputmode="decimal" placeholder="Optional — we solve"></div>
-            <small class="hint">Enter an amount to test longevity or back-solve your savings.</small>
-          </label>
         </div>
+      </fieldset>
+      </div>
+
+      <div class="input-pane">
+      <fieldset>
+        <legend>Gap solver <em>(optional)</em></legend>
+        <label class="field"><span>Target spending <em>($/mo)</em></span>
+          <div class="money"><i>$</i><input id="desiredSpend" type="text" inputmode="decimal" placeholder="Optional — we solve"></div>
+          <small class="hint">Enter an amount to test longevity or back-solve your savings.</small>
+        </label>
         <div class="solver" id="backfillRow" hidden>
-          <div class="solver-head"><strong>Gap solver</strong><span>Adjust your plan to fund this target spending</span></div>
           <div class="backfill">
             <div class="field"><span>Back-fill by adjusting</span>
               <div class="toggle backfill-toggle" role="group" aria-label="Back-fill by adjusting">

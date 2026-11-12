@@ -50,9 +50,7 @@ legend em{font-weight:500;color:var(--muted);font-style:normal;text-transform:no
 .range-years input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent;background:#fff}
 .solver{background:#eef7f2;border:1px solid #c6e2d4;border-radius:12px;padding:12px 14px;margin:4px 0 8px}
 .solver[hidden]{display:none}
-.solver-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;margin-bottom:8px;flex-wrap:wrap}
-.solver-head strong{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--accent)}
-.solver-head span{font-size:12px;color:var(--muted)}
+
 .backfill{display:grid;gap:6px}.backfill .field{margin:0}.backfill-toggle{display:flex}.backfill-toggle button{flex:1;background:#fff}.backfill-btn{justify-self:start;background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600;padding:8px 15px}.backfill-btn:hover{background:#0a6650}
 .presets{display:grid;grid-template-columns:repeat(2,1fr);gap:6px;margin-bottom:12px}.presets button{border:1px solid var(--border);background:var(--surface-soft);border-radius:8px;padding:6px 10px;font-size:12.5px;font-weight:600;cursor:pointer;font:inherit;text-align:center}.presets button:hover{border-color:#b8c7bc}.presets button.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 .warn{background:#fdf0ec;color:#8c2f1a;border:1px solid #f3c6b8;border-radius:10px;padding:10px 12px;font-size:13px;margin:12px 0 0}
