@@ -287,7 +287,6 @@ function monteCarlo(R){
   const bandPts = bands.map((vals, i) => { const s = Float64Array.from(vals).sort(); return {t: R.points[i].t, p10: mcQuantile(s, .1), p50: mcQuantile(s, .5), p90: mcQuantile(s, .9)}; });
   const deflate = yrs => Math.pow(1 + S.inflAnnual, yrs);
   return { trials: MC_TRIALS, success: successAt(S.spend), sMax: Array.from(sorted),
-           successDesired: Number.isFinite(v.desiredSpend) ? successAt(Math.max(0, v.desiredSpend)) : null,
            spendAtTarget: Math.max(0, mcQuantile(sorted, 1 - v.mcSuccessTarget/100)), successTarget: v.mcSuccessTarget,
            medianEndToday: bandPts[bandPts.length-1].p50 / deflate(R.yrs + (v.retireYears||0)),
            p10EndToday: bandPts[bandPts.length-1].p10 / deflate(R.yrs + (v.retireYears||0)), bands: bandPts, guardrail: null, riskGuardrail: null };
@@ -322,7 +321,6 @@ function guardrailMC(R){
   const gSorted = Float64Array.from(gMax).sort(), gSuccessAt = s => { let n = 0; for (const x of gMax) if (x >= s - 1e-6) n++; return n / MC_TRIALS; };
   const endsSorted = Float64Array.from(endBalsG).sort(), deflate = yrs => Math.pow(1 + S.inflAnnual, yrs);
   return { cut: v.guardrailCut, success: gSuccessAt(S.spend),
-    successDesired: Number.isFinite(v.desiredSpend) ? gSuccessAt(Math.max(0, v.desiredSpend)) : null,
     spendAtTarget: Math.max(0, mcQuantile(gSorted, 1 - v.mcSuccessTarget/100)),
     medianEndToday: mcQuantile(endsSorted, .5) / deflate(R.yrs + (v.retireYears||0)),
     cutYearShare: guardYearsTotal > 0 ? guardCutYears / guardYearsTotal : 0, sMax: Array.from(gSorted) };
@@ -415,11 +413,17 @@ function syncPresets(){
 const MC_DEBOUNCE_MS = 200;
 function mcKeyFor(R){
   const s = { ...R.san };
-  delete s.guardrailEnabled; delete s.guardrailCut; delete s.riskGuardEnabled; delete s.riskMinChange; delete s.riskCutStep;
+  delete s.guardrailEnabled; delete s.guardrailCut; delete s.riskGuardEnabled; delete s.riskMinChange; delete s.riskCutStep; delete s.desiredSpend;
   return JSON.stringify([s, R.yrs, R.contribMonths, R.incomeDelayMonths, R.totalSpendToday, R.cushionFuture]);
 }
+/** Success rate at `spend` from a cached sorted sMax/gMax distribution (baseline or
+ *  down-year guardrail). Cheap O(trials) count, so desiredSpend stays out of their
+ *  cache keys: typing it reuses the paths instead of re-running the simulation.
+ *  The risk replay keeps desiredSpend in its key — its path dynamics depend on it. */
+function successAtSpend(sMax, spend){ let n = 0; for (const x of sMax) if (x >= spend - 1e-6) n++; return n / sMax.length; }
+function desiredSuccess(sMax, R){ return Number.isFinite(R.san.desiredSpend) ? successAtSpend(sMax, Math.max(0, R.san.desiredSpend)) : null; }
 function guardKeyFor(R){ return mcKeyFor(R) + "|g:" + R.san.guardrailCut; }
-function riskKeyFor(R){ return mcKeyFor(R) + "|r:" + R.san.riskMinChange + "," + R.san.riskCutStep; }
+function riskKeyFor(R){ return mcKeyFor(R) + "|r:" + R.san.riskMinChange + "," + R.san.riskCutStep + "," + R.san.desiredSpend; }
 /** Animate a money headline from its previous value (D3 tween; instant if unchanged). */
 function tweenMoney(el, value){
   if (!window.d3 || !Number.isFinite(value)){ el.textContent = fmt.format(value); el._v = value; return; }
@@ -453,8 +457,8 @@ function renderGuardrails(MC, R, v, pending = false){
     $("guardCutShare").textContent = "…"; $("guardCutNote").textContent = "calculating…";
     return;
   }
-  const hasDesired = G.successDesired !== null, basePct = Math.round((hasDesired ? MC.successDesired : MC.success) * 100);
-  $("guardSuccess").textContent = Math.round((hasDesired ? G.successDesired : G.success) * 100) + "%";
+  const baseDesired = desiredSuccess(MC.sMax, R), guardDesired = desiredSuccess(G.sMax, R), hasDesired = baseDesired !== null, basePct = Math.round((hasDesired ? baseDesired : MC.success) * 100);
+  $("guardSuccess").textContent = Math.round((hasDesired ? guardDesired : G.success) * 100) + "%";
   $("guardSuccessNote").textContent = `vs. ${basePct}% without guardrails, of ${MC.trials.toLocaleString()} paths`;
   $("guardSpend").textContent = fmt.format(G.spendAtTarget);
   $("guardSpendNote").textContent = `vs. ${fmt.format(MC.spendAtTarget)}/mo without — ${fmt.format(Math.max(0, G.spendAtTarget - MC.spendAtTarget))}/mo more at the same ${MC.successTarget}% target`;
@@ -479,7 +483,7 @@ function renderRiskGuardrails(MC, R, v, pending = false){
     $("riskMinSpend").textContent = "…"; $("riskMinNote").textContent = "calculating…";
     return;
   }
-  const hasDesired = G.successDesired !== null, basePct = Math.round((hasDesired ? MC.successDesired : MC.success) * 100);
+  const hasDesired = G.successDesired !== null, baseDesired = desiredSuccess(MC.sMax, R), basePct = Math.round((hasDesired ? baseDesired : MC.success) * 100);
   $("riskSuccess").textContent = Math.round((hasDesired ? G.successDesired : G.success) * 100) + "%";
   $("riskSuccessNote").textContent = `vs. ${basePct}% without guardrails, of ${MC.trials.toLocaleString()} paths`;
   $("riskAvgSpend").textContent = fmt.format(G.avgSpendToday);
@@ -502,9 +506,9 @@ function applyMonteCarlo(MC, R, v, overlaysPending = false){
     drawMcChart(null, null, false);
     return;
   }
-  const hasDesired = MC.successDesired !== null, testSpend = mcTestSpend(R);
+  const successDesired = desiredSuccess(MC.sMax, R), hasDesired = successDesired !== null, testSpend = mcTestSpend(R);
   $("mcSuccessLabel").textContent = `Chance ${fmt.format(testSpend)}/mo lasts ${v.retireYears} yrs`;
-  $("mcSuccess").textContent = Math.round((hasDesired ? MC.successDesired : MC.success) * 100) + "%";
+  $("mcSuccess").textContent = Math.round((hasDesired ? successDesired : MC.success) * 100) + "%";
   $("mcSuccessNote").textContent = `of ${MC.trials.toLocaleString()} simulated paths`;
   $("mcSpendLabel").textContent = `Spending at ${MC.successTarget}% success`;
   $("mcSpendTarget").textContent = fmt.format(MC.spendAtTarget);
@@ -602,8 +606,9 @@ function render(){
   $("otherIncomeStartHint").textContent = !Number.isFinite(R.san.otherIncomeStartYear) || R.san.otherIncomeStartYear <= R.retireYearEff ? "Blank = starts at retirement, no bridge needed." : `Starts ${R.san.otherIncomeStartYear - R.retireYearEff} yr after retirement — portfolio funds all spending until ${R.san.otherIncomeStartYear}, then only the top-up.`;
   $("swr").textContent = R.potToday > 0 ? (R.portfolioSpendToday*12 / R.potToday * 100).toFixed(1) + "%" : "—";
   const scen = d => compute({ ...v, returnBefore: (v.returnBefore||0) + d, returnAfter: (v.returnAfter||0) + d }).totalSpendToday;
-  $("scenLow").textContent = fmt.format(scen(-2)); $("scenBase").textContent = fmt.format(R.totalSpendToday); $("scenHigh").textContent = fmt.format(scen(2));
-  { const vals = [scen(-2), R.totalSpendToday, scen(2)], mx = Math.max(...vals, 1);
+  const scenLow = scen(-2), scenHigh = scen(2);
+  $("scenLow").textContent = fmt.format(scenLow); $("scenBase").textContent = fmt.format(R.totalSpendToday); $("scenHigh").textContent = fmt.format(scenHigh);
+  { const vals = [scenLow, R.totalSpendToday, scenHigh], mx = Math.max(...vals, 1);
     if (window.d3) ["scenLowBar","scenBaseBar","scenHighBar"].forEach((id, i) => d3.select("#"+id).transition().duration(450).ease(d3.easeCubicOut).style("width", (vals[i]/mx*100) + "%")); }
   const baseKey = mcKeyFor(R), gKey = guardKeyFor(R), rKey = riskKeyFor(R);
   const baseHit = mcCache.has && mcCache.key === baseKey;
