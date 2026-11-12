@@ -93,12 +93,14 @@
           <label class="field"><span>Growth in retirement <em>(usually lower)</em></span>
             <div class="pct"><input id="returnAfter" type="number" step="0.1" value="4.5"><i>% / yr</i></div>
           </label>
-          <label class="field"><span>Volatility before retirement <em>(Monte Carlo σ)</em></span>
+          <label class="field"><span>Volatility before retirement</span>
             <div class="pct"><input id="volBefore" type="number" step="0.5" value="14"><i>% / yr</i></div>
             <small class="hint">How much returns swing around the growth rate above, year to year. Used only by the Monte Carlo check below.</small>
           </label>
-          <label class="field"><span>Volatility in retirement <em>(Monte Carlo σ)</em></span>
+          <label class="field"><span>Volatility in retirement</span>
             <div class="pct"><input id="volAfter" type="number" step="0.5" value="9"><i>% / yr</i></div>
+            <small class="hint">How much returns swing around the growth rate above, year to year. Used only by the Monte Carlo check below.</small>
+          </label>
           </label>
           <label class="field"><span>Inflation</span>
             <div class="pct"><input id="inflation" type="number" step="0.1" value="2.5"><i>% / yr</i></div>
@@ -120,7 +122,7 @@
               <button type="button" id="backfillMonthly" class="active">Monthly contributions</button><button type="button" id="backfillSavings">Current savings</button>
             </div>
           </div>
-          <button type="button" id="backfillBtn" class="btn backfill-btn">← Back-fill to fund this spending</button>
+          <button type="button" id="backfillBtn" class="btn backfill-btn">Back-fill to fund this spending</button>
           <small class="hint" id="backfillHint"></small>
         </div>
       </fieldset>
