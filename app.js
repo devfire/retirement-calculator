@@ -9,7 +9,7 @@ const compact = v => "$" + Intl.NumberFormat("en-US",{notation:"compact",maximum
 const mRate = annualPct => Math.pow(1 + annualPct/100, 1/12) - 1; // effective monthly
 
 let basis = "today", chartData = null, lastBackfill = null, backfillMode = "monthly", stickySolve = false, resolving = false, sharedView = false;
-let chartView = "balance", showCum = true, showMC = true, lastMcVis = null;
+let chartView = "balance", showMC = true, lastMcVis = null;
 let mcTimer = null, mcSeq = 0, mcCache = { key: null, value: null, has: false };
 
 /** Keep only digits and the first decimal point (commas, $, spaces, letters dropped). */
@@ -525,7 +525,7 @@ function drawChart(animate = true){
   P(null, "cum-area").attr("fill", "rgba(233,161,59,.45)").transition(tr).attr("d", areaCum(pts)).attr("opacity", comp ? 1 : 0);
   P(null, "growth-area").attr("fill", "rgba(14,122,95,.45)").transition(tr).attr("d", areaGrowth(pts)).attr("opacity", comp ? 1 : 0);
   P(null, "mc-median").attr("fill", "none").attr("stroke", "#17211b").attr("stroke-width", 1.5).attr("stroke-dasharray", "6 4").transition(tr).attr("d", showMC && mc ? lineBal(mc.map(d => ({ t: d.t, bal: d.p50 }))) : lineBal(pts.map(p => ({ t: p.t, bal: 0 })))).attr("opacity", showMC && mc && !comp ? 1 : 0);
-  P(null, "cum-line").attr("fill", "none").attr("stroke", "#e9a13b").attr("stroke-width", 2).attr("stroke-dasharray", comp ? "none" : "5 4").transition(tr).attr("d", lineBal(pts.map(p => ({ t: p.t, bal: p.cum })))).attr("opacity", showCum || comp ? 1 : 0);
+  P(null, "cum-line").attr("fill", "none").attr("stroke", "#e9a13b").attr("stroke-width", 2).transition(tr).attr("d", lineBal(pts.map(p => ({ t: p.t, bal: p.cum })))).attr("opacity", comp ? 1 : 0);
   P(null, "bal-line").attr("fill", "none").attr("stroke", "#0e7a5f").attr("stroke-width", 2.5).transition(tr).attr("d", lineBal(pts));
   P(null, "spend-line").attr("fill", "none").attr("stroke", "#c4553b").attr("stroke-width", 2.5).transition(tr).attr("d", lineBal(pts.filter(p => p.t >= chartData.yrs)));
   // Retirement marker
@@ -593,11 +593,11 @@ function drawMcChart(MC, R, animate = true){
 }
 $("basisToday").onclick = () => { basis="today"; $("basisToday").classList.add("active"); $("basisNominal").classList.remove("active"); drawChart(); };
 $("basisNominal").onclick = () => { basis="nominal"; $("basisNominal").classList.add("active"); $("basisToday").classList.remove("active"); drawChart(); };
-$("viewBalance").onclick = () => { chartView="balance"; $("viewBalance").classList.add("active"); $("viewComposition").classList.remove("active"); $("legendGrowth").hidden = true; drawChart(); };
-$("viewComposition").onclick = () => { chartView="composition"; $("viewComposition").classList.add("active"); $("viewBalance").classList.remove("active"); $("legendGrowth").hidden = false; drawChart(); };
-document.querySelectorAll(".lg[data-series='cum'], .lg[data-series='mc']").forEach(el => el.addEventListener("click", () => {
-  if (el.dataset.series === "cum") showCum = !showCum; else showMC = !showMC;
-  document.querySelectorAll(`.lg[data-series='${el.dataset.series}']`).forEach(n => n.classList.toggle("off", el.dataset.series === "cum" ? !showCum : !showMC));
+$("viewBalance").onclick = () => { chartView="balance"; $("viewBalance").classList.add("active"); $("viewComposition").classList.remove("active"); $("legendContrib").hidden = true; $("legendGrowth").hidden = true; drawChart(); };
+$("viewComposition").onclick = () => { chartView="composition"; $("viewComposition").classList.add("active"); $("viewBalance").classList.remove("active"); $("legendContrib").hidden = false; $("legendGrowth").hidden = false; drawChart(); };
+document.querySelectorAll(".lg[data-series='mc']").forEach(el => el.addEventListener("click", () => {
+  showMC = !showMC;
+  document.querySelectorAll(".lg[data-series='mc']").forEach(n => n.classList.toggle("off", !showMC));
   drawChart(false);
 }));
 

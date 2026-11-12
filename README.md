@@ -83,7 +83,7 @@ them individually afterwards.
   Saving / Coasting / Spending phase bands reflecting the contribution
   window, a crosshair hover (balance, contributed,
   balance-vs-contributed, Monte Carlo median/band), a today-$ / future-$
-  toggle, clickable legend entries, and a **Balance / What built it** view
+  toggle, a clickable Monte Carlo legend entry, and a **Balance / What built it** view
   that stacks contributions vs. growth up to the balance line.
 - **Monte Carlo card** — 1,000 simulated market paths with randomly varying
   monthly returns: the chance the headline spending lasts the full

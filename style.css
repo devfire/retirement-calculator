@@ -84,7 +84,7 @@ legend em{font-weight:500;color:var(--muted);font-style:normal;text-transform:no
 #chart .axis-x path,#chart .axis-y path,#mcChart .axis-x path,#mcChart .axis-y path{stroke:var(--border)}
 #chart .grid line,#mcChart .grid line{stroke:#e8ede8}#chart .grid path,#mcChart .grid path{stroke:none}
 #chart .phase-label{font-size:11px;font-weight:700;fill:var(--muted)}#chart .retire-label{font-size:11px;font-weight:700;fill:var(--draw)}
-.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid #edf1ed}.legend .lg[data-series=cum],.legend .lg[data-series=mc]{cursor:pointer}.legend .lg.off{opacity:.35}.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}.sw.accum{background:var(--accent)}.sw.draw{background:var(--draw)}.sw.contrib{background:var(--accent2)}.sw.growth{background:var(--accent)}.sw.mcband{background:rgba(23,33,27,.22)}.sw.mcmed{background:var(--fg)}
+.legend{display:flex;gap:16px;font-size:12px;color:var(--muted);flex-wrap:wrap;margin-top:10px;padding-top:10px;border-top:1px solid #edf1ed}.legend .lg[data-series=mc]{cursor:pointer}.legend .lg.off{opacity:.35}.sw{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px}.sw.accum{background:var(--accent)}.sw.draw{background:var(--draw)}.sw.contrib{background:var(--accent2)}.sw.growth{background:var(--accent)}.sw.mcband{background:rgba(23,33,27,.22)}.sw.mcmed{background:var(--fg)}
 /* Act III: Stress Test */
 .risk-split{display:grid;gap:22px}
 .risk-block{background:var(--surface-soft);border:1px solid var(--border);border-radius:14px;padding:18px}
@@ -110,7 +110,6 @@ footer{max-width:1560px;margin:0 auto;padding:0 clamp(18px,3.5vw,48px) 30px;colo
 }
 @media(min-width:1680px){
   .hero,.layout,footer{max-width:1840px}
-  .risk-split{grid-template-columns:1fr 1.35fr;align-items:start}
 }
 @media(max-width:1079px){
   .plan-fields{grid-template-columns:repeat(2,1fr);gap:16px}
