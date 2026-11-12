@@ -844,6 +844,7 @@ function drawMcChart(MC, R, animate = true){
     ? "Distribution of the monthly spending each simulated path could sustain — bars left of the desired line are paths where your desired spending runs short."
     : "Distribution of the monthly spending each simulated path could sustain — bars left of the headline line are paths where it runs short.";
 }
+if (typeof document !== "undefined"){
 $("basisToday").onclick = () => { basis="today"; $("basisToday").classList.add("active"); $("basisToday").setAttribute("aria-pressed","true"); $("basisNominal").classList.remove("active"); $("basisNominal").setAttribute("aria-pressed","false"); drawChart(); };
 $("basisNominal").onclick = () => { basis="nominal"; $("basisNominal").classList.add("active"); $("basisNominal").setAttribute("aria-pressed","true"); $("basisToday").classList.remove("active"); $("basisToday").setAttribute("aria-pressed","false"); drawChart(); };
 $("viewBalance").onclick = () => { chartView="balance"; $("viewBalance").classList.add("active"); $("viewBalance").setAttribute("aria-pressed","true"); $("viewComposition").classList.remove("active"); $("viewComposition").setAttribute("aria-pressed","false"); $("legendContrib").hidden = true; $("legendGrowth").hidden = true; drawChart(); };
@@ -853,6 +854,7 @@ document.querySelectorAll(".lg[data-series='mc']").forEach(el => el.addEventList
   document.querySelectorAll(".lg[data-series='mc']").forEach(n => { n.classList.toggle("off", !showMC); n.setAttribute("aria-pressed", String(showMC)); });
   drawChart(false);
 }));
+}
 
 function save(v){ if (sharedView) return; try{ localStorage.setItem("retireplan-v1", JSON.stringify(v)); }catch{} }
 /** A plan opened from a share link is a view, not the saved plan: it must not reach
@@ -915,6 +917,10 @@ function load(){
   } else loadSaved();
   for (const f of MONEY_FIELDS) if ($(f).value !== "") $(f).value = formatMoneyString($(f).value);
 }
+// Browser-only wiring. Guarded so the pure financial core above (compute,
+// monteCarlo, backfillPlan, encodeShare, …) can be require()d by node:test
+// without a DOM — see test/core.test.js.
+if (typeof document !== "undefined"){
 $("shareBtn").onclick = async () => {
   const url = location.href.split("#")[0] + "#" + encodeShare(readInputs());
   try{ await navigator.clipboard.writeText(url); $("shareBtn").textContent = "✓ Link copied"; }
@@ -944,3 +950,7 @@ $("retireYear").max = nowYear + 60;
 // Commit (blur/Enter) applies any clamp deferred while the year was being retyped.
 $("retireYear").addEventListener("change", render);
 load(); render();
+}
+if (typeof module !== "undefined" && module.exports){
+  module.exports = { FIELDS, MONEY_FIELDS, nowYear, compute, monteCarlo, guardrailMC, riskGuardrailMC, backfillPlan, encodeShare, decodeShare, successAtSpend, makeGauss, mcSetup, accumulateToRetirement, mcQuantile };
+}

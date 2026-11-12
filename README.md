@@ -21,6 +21,13 @@ python3 -m http.server 8765
 # → http://127.0.0.1:8765
 ```
 
+Financial-core tests (no deps) cover the solver, back-fill, Monte Carlo
+analytic-vs-bisection agreement, and share-link round-trips:
+
+```bash
+node --test test/core.test.js
+```
+
 ## The scenario it models
 
 | Phase | Example | What happens |
