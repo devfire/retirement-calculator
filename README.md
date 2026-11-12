@@ -30,15 +30,15 @@ python3 -m http.server 8765
 | **Spending** | 30 years in retirement | Level, inflation-indexed withdrawals until the pot reaches ~$0 |
 
 With those defaults (7% growth before retirement, 4.5% in retirement, 2.5%
-inflation, retirement in 10 years):
+inflation, retirement in 10 years — e.g. 110 months from Nov 2026 to Jan 2036, with 50 contribution months from Nov 2026 to Jan 2031):
 
 | Result | Value |
 |---|---|
-| Pot at retirement | $2,368,833 future $ = **$1,850,529 in today's $** |
-| You put in | $1,240,000 ($1M + $240,000 contributed) |
-| Growth earned by retirement | $1,128,833 |
-| **Sustainable spending** | **$6,768/mo ($81,217/yr) in today's dollars** |
-| First retirement year actually pays | $8,664/mo (future $ — inflation has eroded the dollar) |
+| Pot at retirement | $2,184,265 future $ = **$1,741,820 in today's $** |
+| You put in | $1,200,000 ($1M + $200,000 contributed) |
+| Growth earned by retirement | $984,265 |
+| **Sustainable spending** | **$6,370/mo ($76,446/yr) in today's dollars** |
+| First retirement year actually pays | $7,989/mo (future $ — inflation has eroded the dollar) |
 | Implied withdrawal rate | 4.4% of the pot at retirement |
 
 ## Inputs
@@ -73,7 +73,7 @@ them individually afterwards.
   as the inflated amount the first retirement year actually pays.
 - **Sensitivity strip** — “What if average returns are permanently
   higher/lower?”: the same answer if both growth rates were 2%/yr
-  lower or higher for the whole plan (defaults: $4,289 / $6,768 / $10,314 per month). This
+  lower or higher for the whole plan (defaults: $4,093 / $6,370 / $9,577 per month). This
   shifts the return assumption itself, unlike Monte Carlo below, which
   varies year-to-year timing around it — don’t stack the −2% column with
   the Monte Carlo cautious spending, since it is already the middle path
@@ -95,7 +95,7 @@ them individually afterwards.
   comparison), so the big percentage always answers the amount you asked
   about. The balance chart gains a 10th–90th
   percentile band and a simulated-median line (hover for values). With the
-  defaults the headline $5,620/mo (no contributions) lasts in ~47% of
+  defaults the headline $5,423/mo (no contributions) lasts in ~47% of
   paths: the deterministic answer is calibrated to be the *median* path,
   so treat it as a coin-flip plan and the success-target spending
   (~$3,200/mo at the default 85%) as the cautious one. A **histogram** under the card shows the
@@ -188,6 +188,13 @@ income amount itself is unchanged.
 - Monthly simulation; contributions and withdrawals at the **start** of each
   month, then growth for the month. Annual rates are converted to effective
   monthly rates, $r_m = (1+r)^{1/12}-1$.
+- **Timing:** “today” is the start of the current month and retirement is Jan 1
+  of the retirement year, so a Nov 2026 plan retiring in 2036 spans 110 months
+  (9.17 years), not 10. The contribution window runs from today (or Jan 1 of
+  its start year) to Jan 1 of its end year, and future dollars are deflated by
+  $(1+\text{inflation})^{\text{months}/12}$. Horizons shrink month to month as
+  time passes — there is no jump on Jan 1, but worked-example figures move
+  slightly with the current month.
 - Sustainable spending is a level real (inflation-adjusted) annuity-due solved
   from the pot in today's dollars using the real retirement return
   $(1+r_{after})/(1+\text{inflation})-1$. The nominal drawdown simulation

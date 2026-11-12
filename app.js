@@ -2,7 +2,14 @@
 const $ = id => document.getElementById(id);
 const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribStartYear","contribEndYear","contribGrowth","returnBefore","returnAfter","volBefore","volAfter","inflation","retireYears","mcSuccessTarget","otherIncome","otherIncomeStartYear","desiredEndAmount","desiredSpend","guardrailCut","guardrailEnabled","riskMinChange","riskCutStep","riskGuardEnabled"];
 const MONEY_FIELDS = ["currentSavings","monthlyContribution","otherIncome","desiredEndAmount","desiredSpend"];
-const nowYear = new Date().getFullYear();
+const nowDate = new Date();
+const nowYear = nowDate.getFullYear();
+const nowMonth = nowDate.getMonth(); // 0=Jan; simulation starts at the start of the current month
+// Retirement and year boundaries are Jan 1 of the named year. Months (not
+// whole years) avoid overstating late-year horizons by nearly a year.
+const monthsUntilJan = year => Math.max(0, (year - nowYear) * 12 - nowMonth);
+const yearAt = t => nowYear + Math.floor((nowMonth + Math.round(t * 12)) / 12);
+const monthsLabel = months => { const m = Math.round(months); if (m <= 0) return "0 months"; const y = Math.floor(m / 12), r = m % 12; if (y === 0) return `${r} month${r === 1 ? "" : "s"}`; if (r === 0) return `${y} year${y === 1 ? "" : "s"}`; return `${y} year${y === 1 ? "" : "s"} ${r} month${r === 1 ? "" : "s"}`; };
 const fmt = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
 const fmt2 = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:2});
 const compact = v => "$" + Intl.NumberFormat("en-US",{notation:"compact",maximumFractionDigits:1}).format(v);
@@ -70,19 +77,21 @@ function compute(raw){
   const warns = clamped ? ["Some assumptions were outside sane ranges and were clamped (−50%…30% returns, −10%…30% inflation, −20%…50% contribution growth, 0…40% volatility, 1…99% Monte Carlo success target, 0…50% guardrail cuts, 1…100% risk step, 0…60 retirement years)."] : [];
   if (v.retireYear !== retireYearIn) warns.push(`Retirement year is more than 60 years away — clamped to ${nowYear + 60}.`);
   const retireYearEff = Math.max(v.retireYear, nowYear);
-  const yearsToRetire = retireYearEff - nowYear;
   if (v.retireYear < nowYear) warns.push("Retirement year is in the past — results below assume retiring now.");
+  // "Today" is the start of the current month; retirement is Jan 1 of the
+  // retirement year. Months (not whole years) keep late-year horizons honest.
+  const monthsRet = monthsUntilJan(retireYearEff);
+  const yrs = monthsRet / 12; // fractional years: deflation and chart use this
   // Contribution window [start, end) in calendar years, on a today→retirement scale.
-  // Contributions run for the months from the start year up to (not including) the end year.
+  // Contributions run from Jan 1 of the start year (or today if that is this year)
+  // up to (not including) Jan 1 of the end year.
   const startIn = Math.round(num(raw.contribStartYear, nowYear)), endIn = Math.round(num(raw.contribEndYear, retireYearEff));
   v.contribStartYear = clamp(startIn, nowYear, retireYearEff);
   v.contribEndYear = clamp(endIn, nowYear, retireYearEff);
   if (v.contribStartYear !== startIn || v.contribEndYear !== endIn) warns.push(`Contribution window (${startIn}–${endIn}) sits outside today–retirement (${nowYear}–${retireYearEff}) — capped to that range.`);
   if (v.contribEndYear < v.contribStartYear){ v.contribEndYear = v.contribStartYear; warns.push("Contribution end year was before its start year — set equal to the start year (no contributions)."); }
-  const yrs = yearsToRetire;
-  const monthsRet = Math.round(yrs * 12);
-  const contribStartMonths = (v.contribStartYear - nowYear) * 12;
-  const contribEndMonths = (v.contribEndYear - nowYear) * 12;
+  const contribStartMonths = monthsUntilJan(v.contribStartYear);
+  const contribEndMonths = monthsUntilJan(v.contribEndYear);
   const contribMonths = contribEndMonths - contribStartMonths;
   const rB = mRate(v.returnBefore), rA = mRate(v.returnAfter), inf = mRate(v.inflation);
   const inflAnnual = v.inflation/100;
@@ -192,7 +201,7 @@ function compute(raw){
     }
     gap = { requiredPotToday, shortfallToday, extraMonthly, lumpToday };
   }
-  return {warns, yrs, contribMonths, contribStartMonths, contribEndMonths, potFuture, potToday, growthEarned, totalContrib, retireYearEff, gap, san: v, incomeDelayMonths,
+  return {warns, yrs, monthsRet, contribMonths, contribStartMonths, contribEndMonths, potFuture, potToday, growthEarned, totalContrib, retireYearEff, gap, san: v, incomeDelayMonths,
           portfolioSpendToday, totalSpendToday, points, desiredMonths, rReal, cushionToday, cushionFuture, cushionPVToday, endBalanceFuture: N > 0 ? bal : potFuture};
 }
 
@@ -218,7 +227,7 @@ function makeGauss(){
 }
 /** Per-month constants shared by the baseline and both strategy replays. */
 function mcSetup(R){
-  const v = R.san, N = Math.round((v.retireYears||0) * 12), monthsRet = Math.round(R.yrs * 12);
+  const v = R.san, N = Math.round((v.retireYears||0) * 12), monthsRet = R.monthsRet ?? Math.round(R.yrs * 12);
   const contribAmt = new Float64Array(monthsRet), inflRet = new Float64Array(N);
   for (let m = 0; m < monthsRet; m++) contribAmt[m] = m >= R.contribStartMonths && m < R.contribEndMonths ? (v.monthlyContribution||0) * Math.pow(1 + (v.contribGrowth||0)/100, Math.floor((m - R.contribStartMonths)/12)) : 0;
   for (let m = 0; m < N; m++) inflRet[m] = Math.pow(1 + v.inflation/100, (monthsRet + m)/12);
@@ -235,6 +244,9 @@ function accumulateToRetirement(S, gauss){
     const gB = Math.exp(S.muB + S.sigB * gauss()); bal *= gB; prodB *= gB;
     if ((m+1) % 12 === 0){ lastYearProd = prodB; prodB = 1; }
   }
+  // A partial final year (today's month offsets retirement from Jan) is the last
+  // pre-retirement year too: its raw product's sign is the annualized sign.
+  if (S.monthsRet > 0 && S.monthsRet % 12 !== 0) lastYearProd = prodB;
   return { balRetire: bal, priorDown: lastYearProd !== null && lastYearProd < 1 }; // last pre-retirement year down → first retirement year is a cut year
 }
 const guardIsActive = R => !!R.san.guardrailEnabled && (R.san.guardrailCut||0) > 0;
@@ -550,7 +562,7 @@ function syncContributionWindow(R){
   if (document.activeElement === retireEl && !completeYear) return;
   const s = R.san.contribStartYear, e = R.san.contribEndYear, span = Math.max(1, R.retireYearEff - nowYear);
   for (const id of ["contribStartYear","contribEndYear","contribStartYearNum","contribEndYearNum"]){
-    const el = $(id); el.min = nowYear; el.max = R.retireYearEff; el.disabled = R.yrs === 0;
+    const el = $(id); el.min = nowYear; el.max = R.retireYearEff; el.disabled = R.monthsRet === 0;
   }
   if (document.activeElement !== $("contribStartYear")) $("contribStartYear").value = s;
   if (document.activeElement !== $("contribEndYear")) $("contribEndYear").value = e;
@@ -559,8 +571,7 @@ function syncContributionWindow(R){
   $("contribRange").style.setProperty("--lo", ((s - nowYear)/span*100) + "%");
   $("contribRange").style.setProperty("--hi", ((e - nowYear)/span*100) + "%");
   $("contribRangeOut").textContent = `${s} – ${e}`;
-  const dur = R.contribMonths/12;
-  $("contribRangeDur").textContent = dur > 0 ? `${dur} yr${dur === 1 ? "" : "s"} of contributions` : "No contributions";
+  $("contribRangeDur").textContent = R.contribMonths > 0 ? `${monthsLabel(R.contribMonths)} of contributions` : "No contributions";
 }
 
 function render(){
@@ -569,15 +580,15 @@ function render(){
   syncPresets();
   syncContributionWindow(R);
   $("retireYearsOut").textContent = `${v.retireYears} yrs`;
-  $("yearsHint").textContent = R.yrs > 0 ? `${R.yrs} year${R.yrs===1?"":"s"} from now (${nowYear} → ${R.retireYearEff})` : "Retiring now.";
+  $("yearsHint").textContent = R.monthsRet > 0 ? `${monthsLabel(R.monthsRet)} from now (${nowYear} → ${R.retireYearEff})` : "Retiring now.";
   const warns = shareLinkFailed ? ["Couldn't read this share link — showing your saved plan instead. Your saved plan has not been changed.", ...R.warns] : R.warns;
   $("warn").hidden = warns.length === 0; $("warn").textContent = warns.join(" ");
 
   const cStart = R.san.contribStartYear, cEnd = R.san.contribEndYear;
   $("timeline").innerHTML =
     (R.contribMonths > 0 && R.contribStartMonths > 0 ? `<div class="tl coast"><b>🌿 ${nowYear}–${cStart} · Coasting</b><span>Contributions start in ${cStart} — compounding only until then</span></div>` : "") +
-    (R.contribMonths > 0 ? `<div class="tl save"><b>💰 ${cStart}–${cEnd} · Saving</b><span>${fmt.format(v.monthlyContribution||0)}/mo for ${R.contribMonths/12} yrs</span></div>` : "") +
-    (R.contribEndMonths < R.yrs * 12 ? `<div class="tl coast"><b>🌿 ${R.contribMonths > 0 ? cEnd : nowYear}–${R.retireYearEff} · Coasting</b><span>${R.contribMonths > 0 && (v.monthlyContribution||0) > 0 ? `Contributions stop in ${cEnd} — compounding only after that` : "No contributions — compounding only"}</span></div>` : "") +
+    (R.contribMonths > 0 ? `<div class="tl save"><b>💰 ${cStart}–${cEnd} · Saving</b><span>${fmt.format(v.monthlyContribution||0)}/mo for ${monthsLabel(R.contribMonths)}</span></div>` : "") +
+    (R.contribEndMonths < R.monthsRet ? `<div class="tl coast"><b>🌿 ${R.contribMonths > 0 ? cEnd : nowYear}–${R.retireYearEff} · Coasting</b><span>${R.contribMonths > 0 && (v.monthlyContribution||0) > 0 ? `Contributions stop in ${cEnd} — compounding only after that` : "No contributions — compounding only"}</span></div>` : "") +
     `<div class="tl spend"><b>🌅 ${R.retireYearEff}–${R.retireYearEff + (v.retireYears||0)} · Spending</b><span>${fmt.format(R.totalSpendToday)}/mo in today's $</span></div>`;
 
   $("vYears").textContent = v.retireYears;
@@ -621,7 +632,7 @@ function render(){
   $("growthEarned").textContent = fmt.format(R.growthEarned);
   const bite = R.yrs > 0 ? (1 - 1/Math.pow(1 + R.san.inflation/100, R.yrs)) * 100 : 0;
   $("inflBite").textContent = bite.toFixed(1) + "%";
-  $("inflBiteDetail").textContent = R.yrs > 0 ? `purchasing power lost over ${R.yrs}y at ${R.san.inflation}% inflation` : "—";
+    $("inflBiteDetail").textContent = R.monthsRet > 0 ? `purchasing power lost over ${monthsLabel(R.monthsRet)} at ${R.san.inflation}% inflation` : "—";
 
   const dOut = $("desiredOut");
   if (Number.isFinite(v.desiredSpend)){
@@ -725,7 +736,7 @@ function drawChart(animate = true){
   ph.selectAll("text").data(phases).join("text").attr("class", "phase-label").transition(tr).attr("x", d => x(d.x0) + 8).attr("y", m.t + 14).attr("opacity", d => x(d.x1) - x(d.x0) > 64 ? 1 : 0).text(d => d.label);
   // Axes + grid
   g.selectAll("g.axis-y").data([null]).join("g").attr("class", "axis-y grid").attr("transform", `translate(${m.l},0)`).transition(tr).call(d3.axisLeft(y).ticks(5).tickFormat(compact).tickSize(-iw));
-  g.selectAll("g.axis-x").data([null]).join("g").attr("class", "axis-x").attr("transform", `translate(0,${m.t + ih})`).transition(tr).call(d3.axisBottom(x).ticks(Math.min(9, maxT)).tickFormat(t => nowYear + Math.round(t)));
+  g.selectAll("g.axis-x").data([null]).join("g").attr("class", "axis-x").attr("transform", `translate(0,${m.t + ih})`).transition(tr).call(d3.axisBottom(x).ticks(Math.min(9, maxT)).tickFormat(t => yearAt(t)));
   const lineBal = d3.line().x(d => x(d.t)).y(d => y(Math.max(0, d.bal))).curve(d3.curveMonotoneX);
   const areaBal = d3.area().x(d => x(d.t)).y0(y(0)).y1(d => y(Math.max(0, d.bal))).curve(d3.curveMonotoneX);
   const areaCum = d3.area().x(d => x(d.t)).y0(y(0)).y1(d => y(Math.max(0, Math.min(d.cum, d.bal)))).curve(d3.curveMonotoneX);
@@ -757,7 +768,7 @@ function drawChart(animate = true){
       const p = pts[bi], phase = p.t < chartData.yrs && p.t >= chartData.contribStartT && p.t < chartData.contribT ? "Saving" : p.t < chartData.yrs ? "Coasting" : "Spending";
       ch.attr("opacity", 1); ch.select("line").attr("x1", x(p.t)).attr("x2", x(p.t)); ch.select("circle").attr("cx", x(p.t)).attr("cy", y(Math.max(0, p.bal)));
       tip.hidden = false;
-      tip.textContent = `${nowYear + Math.floor(p.t)} · ${phase}\nBalance: ${fmt.format(p.bal)}\nContributed: ${fmt.format(p.cum)}\nBalance vs contributed: ${fmt.format(p.growth)}` + (showMC && mc && mc[bi] ? `\nSimulated median: ${fmt.format(mc[bi].p50)}\nSimulated 10–90%: ${fmt.format(mc[bi].p10)} – ${fmt.format(mc[bi].p90)}` : "");
+      tip.textContent = `${yearAt(p.t)} · ${phase}\nBalance: ${fmt.format(p.bal)}\nContributed: ${fmt.format(p.cum)}\nBalance vs contributed: ${fmt.format(p.growth)}` + (showMC && mc && mc[bi] ? `\nSimulated median: ${fmt.format(mc[bi].p50)}\nSimulated 10–90%: ${fmt.format(mc[bi].p10)} – ${fmt.format(mc[bi].p90)}` : "");
       const rect = wrap.getBoundingClientRect();
       tip.style.left = Math.min(x(p.t) + 14, Math.max(0, rect.width - 180)) + "px"; tip.style.top = "12px";
     })
