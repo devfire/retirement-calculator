@@ -195,7 +195,8 @@ income amount itself is unchanged.
 
 - All computation runs locally in your browser; nothing is sent anywhere.
 - Inputs persist in `localStorage` on that browser only.
-- **Copy share link** encodes the inputs in the URL hash (`#…`), so a plan can
+- **Copy share link** encodes the inputs compactly in the URL hash — values in
+  a fixed order, e.g. `#v1:1000000,2036,5000,2026,2031,…` — so a plan can
   be shared by link; opening such a link shows the shared inputs without
   overwriting your saved plan. Editing it (or pressing Back-fill/Reset) adopts
   it as your plan — the hash is cleared and it then persists as yours. Works

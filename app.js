@@ -619,19 +619,36 @@ function apply(obj){
   for (const id of ["contribStartYear","contribEndYear"]){ $(id).min = nowYear; $(id).max = Math.max(nowYear + 60, Number(o.contribEndYear) || 0, Number(o.retireYear) || 0); }
   for (const f of FIELDS) if (o[f] !== undefined && o[f] !== null && !Number.isNaN(o[f])) $(f).value = MONEY_FIELDS.includes(f) ? formatMoneyString(o[f]) : o[f];
 }
+/** Share format v1: values in FIELDS order, comma-joined, blanks empty, trailing
+ *  blanks dropped — e.g. #v1:1000000,2036,5000,2026,2031,… Append new fields to
+ *  FIELDS only at the end, or bump the prefix. */
+function encodeShare(v){
+  const parts = FIELDS.map(f => Number.isFinite(v[f]) ? String(v[f]) : "");
+  while (parts.length && parts[parts.length - 1] === "") parts.pop();
+  return "v1:" + parts.join(",");
+}
+function decodeShare(hash){
+  const raw = hash.slice(1);
+  if (!raw.startsWith("v1:")) throw new Error("bad share link");
+  const parts = raw.slice(3).split(",");
+  if (parts.length > FIELDS.length) throw new Error("bad share link");
+  const o = {};
+  parts.forEach((p, i) => { if (p === "") return; const n = Number(p); if (!Number.isFinite(n)) throw new Error("bad share link"); o[FIELDS[i]] = n; });
+  return o;
+}
 function load(){
   $("retireYear").value = nowYear + 10;
   // Set the scale before the values: a range input still at its default max would clamp them.
   for (const id of ["contribStartYear","contribEndYear"]){ $(id).min = nowYear; $(id).max = nowYear + 60; }
   $("contribStartYear").value = nowYear; $("contribEndYear").value = nowYear + 5;
   try{
-    if (location.hash.length > 1){ sharedView = true; apply(JSON.parse(decodeURIComponent(location.hash.slice(1)))); }
+    if (location.hash.length > 1){ const o = decodeShare(location.hash); sharedView = true; apply(o); }
     else { const s = localStorage.getItem("retireplan-v1"); if (s) apply(JSON.parse(s)); }
   }catch{}
   for (const f of MONEY_FIELDS) if ($(f).value !== "") $(f).value = formatMoneyString($(f).value);
 }
 $("shareBtn").onclick = async () => {
-  const url = location.href.split("#")[0] + "#" + encodeURIComponent(JSON.stringify(readInputs()));
+  const url = location.href.split("#")[0] + "#" + encodeShare(readInputs());
   try{ await navigator.clipboard.writeText(url); $("shareBtn").textContent = "✓ Link copied"; }
   catch{ prompt("Copy your share link:", url); }
   setTimeout(() => $("shareBtn").textContent = "🔗 Copy share link", 1800);
