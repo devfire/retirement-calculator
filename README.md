@@ -264,6 +264,13 @@ income amount itself is unchanged.
   be read shows your saved plan with a warning and leaves it untouched.
 - A print stylesheet is included: printing shows the results without the
   input form.
+- Accessibility: toggles expose state via `aria-pressed`; the verdict is
+  announced once (debounced, final value only) via a visually hidden
+  `role="status"` summary instead of a live animated number; the balance
+  chart and Monte Carlo histogram carry text summaries (chart `aria-label`,
+  histogram bins are focusable and labelled per bin) with touch and keyboard
+  tooltip support; and all animation (number tween, chart/bar transitions)
+  is disabled when `prefers-reduced-motion` is set.
 
 ## Files
 

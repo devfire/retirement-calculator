@@ -109,6 +109,7 @@ legend em{font-weight:500;color:var(--muted);font-style:normal;text-transform:no
 .mc-chart-wrap{position:relative;margin-top:14px;background:var(--surface);border:1px solid var(--border);border-radius:11px;padding:10px 12px 8px}
 #mcChart{display:block;width:100%}#mcChart .mc-wait{fill:var(--muted);font-size:13px}#mcChart .mc-mark-label{font-size:11px;font-weight:700;fill:var(--fg)}
 .mc-chart-cap{color:var(--muted);font-size:11.5px;margin:4px 0 0}
+.visually-hidden{position:absolute;width:1px;height:1px;margin:-1px;padding:0;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}.legend button.lg{background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;text-align:left}.legend button.lg:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}@media (prefers-reduced-motion: reduce){*,*::before,*::after{transition:none!important;animation:none!important}}
 .risk-foot{margin-top:14px}
 footer{max-width:1560px;margin:0 auto;padding:0 clamp(18px,3.5vw,48px) 30px;color:var(--muted);font-size:12.5px}
 @media(min-width:1080px){

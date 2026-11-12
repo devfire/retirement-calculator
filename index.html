@@ -93,7 +93,7 @@
           <div class="backfill">
             <div class="field"><span>Back-fill by adjusting</span>
               <div class="toggle backfill-toggle" role="group" aria-label="Back-fill by adjusting">
-                <button type="button" id="backfillMonthly" class="active">Monthly contributions</button><button type="button" id="backfillSavings">Current savings</button>
+                <button type="button" id="backfillMonthly" class="active" aria-pressed="true">Monthly contributions</button><button type="button" id="backfillSavings" aria-pressed="false">Current savings</button>
               </div>
             </div>
             <button type="button" id="backfillBtn" class="btn backfill-btn">Back-fill to fund this spending</button>
@@ -129,10 +129,10 @@
       <fieldset>
         <legend>Market &amp; horizon assumptions</legend>
         <div class="presets" role="group" aria-label="Growth presets">
-          <button type="button" data-preset="3,2,6,5">Conservative 3%</button>
-          <button type="button" data-preset="5,3.5,10,7">Balanced 5%</button>
-          <button type="button" data-preset="7,4.5,14,9" class="active">Growth 7%</button>
-          <button type="button" data-preset="9,5,18,11">Optimistic 9%</button>
+          <button type="button" data-preset="3,2,6,5" aria-pressed="false">Conservative 3%</button>
+          <button type="button" data-preset="5,3.5,10,7" aria-pressed="false">Balanced 5%</button>
+          <button type="button" data-preset="7,4.5,14,9" class="active" aria-pressed="true">Growth 7%</button>
+          <button type="button" data-preset="9,5,18,11" aria-pressed="false">Optimistic 9%</button>
         </div>
         <div class="field-row">
           <label class="field"><span>Growth pre-retirement</span>
@@ -169,7 +169,8 @@
 
   <section class="results">
     <!-- Act I: The Verdict -->
-    <div class="verdict card" aria-live="polite">
+    <div class="verdict card">
+      <p id="verdictSummary" class="visually-hidden" role="status"></p>
       <div class="verdict-main">
         <div class="verdict-lead">
           <p class="eyebrow">Sustainable spending for <span id="vYears"></span> years of retirement</p>
@@ -194,10 +195,10 @@
       </div>
       <div class="chart-toggles">
         <div class="toggle" role="group" aria-label="Chart view">
-          <button type="button" id="viewBalance" class="active">Balance</button><button type="button" id="viewComposition">What built it</button>
+          <button type="button" id="viewBalance" class="active" aria-pressed="true">Balance</button><button type="button" id="viewComposition" aria-pressed="false">What built it</button>
         </div>
         <div class="toggle" role="group" aria-label="Dollars basis">
-          <button type="button" id="basisToday" class="active">Today's $</button><button type="button" id="basisNominal">Future $</button>
+          <button type="button" id="basisToday" class="active" aria-pressed="true">Today's $</button><button type="button" id="basisNominal" aria-pressed="false">Future $</button>
         </div>
       </div>
 
@@ -210,8 +211,8 @@
         <div class="stat"><span>Inflation bite</span><strong id="inflBite">—</strong><small id="inflBiteDetail"></small></div>
       </div>
 
-      <div class="chart-wrap"><div id="chart"></div><div id="tooltip" class="tooltip" hidden></div></div>
-      <div class="legend"><span class="lg" data-series="bal"><i class="sw accum"></i>Saving / coasting</span><span class="lg" data-series="bal"><i class="sw draw"></i>Spending</span><span id="legendContrib" hidden><i class="sw contrib"></i>Contributed (cumulative)</span><span id="legendGrowth" hidden><i class="sw growth"></i>Growth on top of contributions</span><span class="lg" data-series="mc" title="Click to show/hide"><i class="sw mcband"></i>Monte Carlo 10th–90th pct ⤢</span><span class="lg" data-series="mc"><i class="sw mcmed"></i>Monte Carlo median</span></div>
+      <div class="chart-wrap"><div id="chart"></div><div id="tooltip" class="tooltip" hidden></div></div><p id="chartSummary" class="visually-hidden"></p>
+      <div class="legend"><span class="lg" data-series="bal"><i class="sw accum"></i>Saving / coasting</span><span class="lg" data-series="bal"><i class="sw draw"></i>Spending</span><span id="legendContrib" hidden><i class="sw contrib"></i>Contributed (cumulative)</span><span id="legendGrowth" hidden><i class="sw growth"></i>Growth on top of contributions</span><button type="button" class="lg" data-series="mc" aria-pressed="true"><i class="sw mcband"></i>Monte Carlo 10th–90th pct ⤢</button><button type="button" class="lg" data-series="mc" aria-pressed="true"><i class="sw mcmed"></i>Monte Carlo median</button></div>
     </div>
 
     <!-- Act III: Stress-Testing the Plan -->
