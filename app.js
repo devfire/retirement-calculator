@@ -8,7 +8,7 @@ const fmt2 = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maxi
 const compact = v => "$" + Intl.NumberFormat("en-US",{notation:"compact",maximumFractionDigits:1}).format(v);
 const mRate = annualPct => Math.pow(1 + annualPct/100, 1/12) - 1; // effective monthly
 
-let basis = "today", chartData = null, lastBackfill = null, backfillMode = "monthly", stickySolve = false, resolving = false, sharedView = false;
+let basis = "today", chartData = null, lastBackfill = null, backfillMode = "monthly", stickySolve = false, resolving = false, sharedView = false, shareLinkFailed = false;
 let chartView = "balance", showMC = true, lastMcVis = null;
 let mcTimer = null, mcSeq = 0, mcCache = { key: null, value: null, has: false }, guardCache = { key: null, value: null, has: false }, riskCache = { key: null, value: null, has: false };
 
@@ -567,7 +567,8 @@ function render(){
   syncContributionWindow(R);
   $("retireYearsOut").textContent = `${v.retireYears} yrs`;
   $("yearsHint").textContent = R.yrs > 0 ? `${R.yrs} year${R.yrs===1?"":"s"} from now (${nowYear} → ${R.retireYearEff})` : "Retiring now.";
-  $("warn").hidden = R.warns.length === 0; $("warn").textContent = R.warns.join(" ");
+  const warns = shareLinkFailed ? ["Couldn't read this share link — showing your saved plan instead. Your saved plan has not been changed.", ...R.warns] : R.warns;
+  $("warn").hidden = warns.length === 0; $("warn").textContent = warns.join(" ");
 
   const cStart = R.san.contribStartYear, cEnd = R.san.contribEndYear;
   $("timeline").innerHTML =
@@ -817,6 +818,7 @@ function save(v){ if (sharedView) return; try{ localStorage.setItem("retireplan-
 function adoptShared(){
   if (!sharedView) return;
   sharedView = false;
+  shareLinkFailed = false;
   try{ history.replaceState(null, "", location.href.split("#")[0]); }catch{}
 }
 function apply(obj){
@@ -838,11 +840,21 @@ function encodeShare(v){
 }
 function decodeShare(hash){
   const raw = hash.slice(1);
-  if (!raw.startsWith("v1:")) throw new Error("bad share link");
-  const parts = raw.slice(3).split(",");
-  if (parts.length > FIELDS.length) throw new Error("bad share link");
+  if (raw.startsWith("v1:")){
+    const parts = raw.slice(3).split(",");
+    if (parts.length > FIELDS.length) throw new Error("bad share link");
+    const o = {};
+    parts.forEach((p, i) => { if (p === "") return; const n = Number(p); if (!Number.isFinite(n)) throw new Error("bad share link"); o[FIELDS[i]] = n; });
+    if (!Object.keys(o).length) throw new Error("bad share link");
+    return o;
+  }
+  // Pre-v1 links: #<encodeURIComponent(JSON.stringify(plan))>. Keep only known
+  // numeric fields (plus contribYears, which apply() migrates to a window).
+  const parsed = JSON.parse(decodeURIComponent(raw));
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("bad share link");
   const o = {};
-  parts.forEach((p, i) => { if (p === "") return; const n = Number(p); if (!Number.isFinite(n)) throw new Error("bad share link"); o[FIELDS[i]] = n; });
+  for (const f of [...FIELDS, "contribYears"]) if (typeof parsed[f] === "boolean") o[f] = parsed[f] ? 1 : 0; else if (Number.isFinite(parsed[f])) o[f] = parsed[f];
+  if (!Object.keys(o).length) throw new Error("bad share link");
   return o;
 }
 function load(){
@@ -850,10 +862,14 @@ function load(){
   // Set the scale before the values: a range input still at its default max would clamp them.
   for (const id of ["contribStartYear","contribEndYear"]){ $(id).min = nowYear; $(id).max = nowYear + 60; }
   $("contribStartYear").value = nowYear; $("contribEndYear").value = nowYear + 5;
-  try{
-    if (location.hash.length > 1){ const o = decodeShare(location.hash); sharedView = true; apply(o); }
-    else { const s = localStorage.getItem("retireplan-v1"); if (s) apply(JSON.parse(s)); }
-  }catch{}
+  const loadSaved = () => { try{ const s = localStorage.getItem("retireplan-v1"); if (s) apply(JSON.parse(s)); }catch{} };
+  if (location.hash.length > 1){
+    // Set sharedView before decoding: a bad hash must never let render()->save()
+    // overwrite the saved plan with the HTML defaults shown in its place.
+    sharedView = true;
+    try{ apply(decodeShare(location.hash)); }
+    catch{ shareLinkFailed = true; loadSaved(); }
+  } else loadSaved();
   for (const f of MONEY_FIELDS) if ($(f).value !== "") $(f).value = formatMoneyString($(f).value);
 }
 $("shareBtn").onclick = async () => {

@@ -253,7 +253,8 @@ income amount itself is unchanged.
   be shared by link; opening such a link shows the shared inputs without
   overwriting your saved plan. Editing it (or pressing Back-fill/Reset) adopts
   it as your plan — the hash is cleared and it then persists as yours. Works
-  from `file://` too.
+  from `file://` too. Pre-v1 (JSON) share links still open; a link that can't
+  be read shows your saved plan with a warning and leaves it untouched.
 - A print stylesheet is included: printing shows the results without the
   input form.
 
