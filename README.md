@@ -216,13 +216,16 @@ income amount itself is unchanged.
   never stacks. Because the withdrawal then depends on the path's own return
   history, the affine shortcut no longer applies — each path's maximum
   guardrailed spend is bisected exactly (withdrawals are monotone in the
-  level spend), reusing that path's simulated returns, end-cushion and
-  other-income bridge.
+  level spend), using that path's simulated returns, end-cushion and
+  other-income bridge. The strategy runs as a separate replay of the same
+  fixed-seed paths as the headline Monte Carlo and is cached separately, so
+  toggling it (or changing the cut) never recomputes the headline result.
 - **Risk-based guardrails (Monte Carlo only):** at each retirement
   anniversary, spending is re-solved from the path's actual balance over the
   remaining months, assuming the entered real return from then on (no
-  look-ahead at the path's future returns, which are stored per path and
-  used only to realize outcomes). The re-solve targets the success-target
+  look-ahead at the path's future returns, which are regenerated identically
+  from the fixed seed for this replay and used only to realize outcomes). The
+  re-solve targets the success-target
   spend, not the median: the median re-solve is haircut by
   $k = 1-(1-k_{full})\sqrt{\text{months left}/N}$, where $k_{full}$ is the
   baseline ratio (spending at the success target ÷ headline spending), so

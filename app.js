@@ -10,7 +10,7 @@ const mRate = annualPct => Math.pow(1 + annualPct/100, 1/12) - 1; // effective m
 
 let basis = "today", chartData = null, lastBackfill = null, backfillMode = "monthly", stickySolve = false, resolving = false, sharedView = false;
 let chartView = "balance", showMC = true, lastMcVis = null;
-let mcTimer = null, mcSeq = 0, mcCache = { key: null, value: null, has: false };
+let mcTimer = null, mcSeq = 0, mcCache = { key: null, value: null, has: false }, guardCache = { key: null, value: null, has: false }, riskCache = { key: null, value: null, has: false };
 
 /** Keep only digits and the first decimal point (commas, $, spaces, letters dropped). */
 function cleanMoney(s){
@@ -194,151 +194,171 @@ function compute(raw){
  *  never overdraw a month, and finish at or above the end cushion. That yields success
  *  rates at any spend and the spend at any success target with no bisection. Two affine
  *  regimes are tracked because after other income starts the withdrawal floors at $0
- *  when S ≤ income; the low regime governs exactly when its own maximum stays below it. */
+ *  when S ≤ income; the low regime governs exactly when its own maximum stays below it.
+ *  The guardrail strategies are NOT part of this baseline: they replay the identical
+ *  seeded paths in guardrailMC/riskGuardrailMC below, so toggling them never changes
+ *  (or recomputes) a single headline number. */
 const MC_TRIALS = 1000;
-function monteCarlo(R){
-  const v = R.san, N = Math.round((v.retireYears||0) * 12);
-  if (N <= 0) return null;
-  const monthsRet = Math.round(R.yrs * 12), contribMonths = R.contribMonths;
-  const muB = Math.log(1 + v.returnBefore/100)/12, sigB = (v.volBefore||0)/100/Math.sqrt(12);
-  const muA = Math.log(1 + v.returnAfter/100)/12, sigA = (v.volAfter||0)/100/Math.sqrt(12);
-  const inflAnnual = v.inflation/100, delay = R.incomeDelayMonths, income = v.otherIncome||0, spend = R.totalSpendToday;
-  const contribAmt = new Float64Array(monthsRet), inflRet = new Float64Array(N); // per-month constants, hoisted out of the trial loop
-  for (let m = 0; m < monthsRet; m++) contribAmt[m] = m >= R.contribStartMonths && m < R.contribEndMonths ? (v.monthlyContribution||0) * Math.pow(1 + (v.contribGrowth||0)/100, Math.floor((m - R.contribStartMonths)/12)) : 0;
-  for (let m = 0; m < N; m++) inflRet[m] = Math.pow(1 + inflAnnual, (monthsRet + m)/12);
+const mcQuantile = (arr, q) => arr[Math.min(arr.length-1, Math.max(0, Math.floor(q * arr.length)))];
+function makeGauss(){
   let state = 0x9e3779b9, spare = null;
   const rng = () => { state |= 0; state = state + 0x6D2B79F5 | 0; let t = Math.imul(state ^ state >>> 15, 1 | state); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
-  const gauss = () => { if (spare !== null){ const s = spare; spare = null; return s; } let u = 0, w = 0, r = 0; do { u = 2*rng()-1; w = 2*rng()-1; r = u*u + w*w; } while (r >= 1 || r === 0); const m = Math.sqrt(-2*Math.log(r)/r); spare = w*m; return u*m; };
+  return () => { if (spare !== null){ const s = spare; spare = null; return s; } let u = 0, w = 0, r = 0; do { u = 2*rng()-1; w = 2*rng()-1; r = u*u + w*w; } while (r >= 1 || r === 0); const m = Math.sqrt(-2*Math.log(r)/r); spare = w*m; return u*m; };
+}
+/** Per-month constants shared by the baseline and both strategy replays. */
+function mcSetup(R){
+  const v = R.san, N = Math.round((v.retireYears||0) * 12), monthsRet = Math.round(R.yrs * 12);
+  const contribAmt = new Float64Array(monthsRet), inflRet = new Float64Array(N);
+  for (let m = 0; m < monthsRet; m++) contribAmt[m] = m >= R.contribStartMonths && m < R.contribEndMonths ? (v.monthlyContribution||0) * Math.pow(1 + (v.contribGrowth||0)/100, Math.floor((m - R.contribStartMonths)/12)) : 0;
+  for (let m = 0; m < N; m++) inflRet[m] = Math.pow(1 + v.inflation/100, (monthsRet + m)/12);
+  return { v, N, monthsRet, contribAmt, inflRet, delay: R.incomeDelayMonths, income: v.otherIncome||0,
+           spend: R.totalSpendToday, inflAnnual: v.inflation/100,
+           muB: Math.log(1 + v.returnBefore/100)/12, sigB: (v.volBefore||0)/100/Math.sqrt(12),
+           muA: Math.log(1 + v.returnAfter/100)/12, sigA: (v.volAfter||0)/100/Math.sqrt(12) };
+}
+/** Accumulation phase of one seeded path (draws consumed in the same order as monteCarlo). */
+function accumulateToRetirement(S, gauss){
+  let bal = S.v.currentSavings||0, prodB = 1, lastYearProd = null;
+  for (let m = 0; m < S.monthsRet; m++){
+    bal += S.contribAmt[m];
+    const gB = Math.exp(S.muB + S.sigB * gauss()); bal *= gB; prodB *= gB;
+    if ((m+1) % 12 === 0){ lastYearProd = prodB; prodB = 1; }
+  }
+  return { balRetire: bal, priorDown: lastYearProd !== null && lastYearProd < 1 }; // last pre-retirement year down → first retirement year is a cut year
+}
+const guardIsActive = R => !!R.san.guardrailEnabled && (R.san.guardrailCut||0) > 0;
+function monteCarlo(R){
+  const S = mcSetup(R), v = S.v, N = S.N;
+  if (N <= 0) return null;
+  const gauss = makeGauss();
   const sMax = new Float64Array(MC_TRIALS);
-  const guardActive = !!v.guardrailEnabled && (v.guardrailCut||0) > 0;
-  const cutFrac = guardActive ? v.guardrailCut/100 : 0;
-  const gMax = guardActive ? new Float64Array(MC_TRIALS) : null;
-  let guardCutYears = 0, guardYearsTotal = 0;
-  const riskActive = !!v.riskGuardEnabled;
-  const rbMinFrac = riskActive ? (v.riskMinChange||0)/100 : 0, rbCutStepFrac = riskActive ? (v.riskCutStep||0)/100 : 0;
-  const rbEndBals = riskActive ? new Float64Array(MC_TRIALS) : null, rbMinSpends = riskActive ? new Float64Array(MC_TRIALS) : null;
-  const retFlat = riskActive ? new Float64Array(MC_TRIALS * N) : null, balRetires = riskActive ? new Float64Array(MC_TRIALS) : null;
-  let rbSuccHead = 0, rbSuccDes = 0, rbSpendSum = 0, rbAdjYears = 0, rbCutYears = 0, rbRaiseYears = 0, rbAnnivTotal = 0;
-  const rRealMC = R.rReal, annuityMC = months => months <= 0 ? 0 : Math.abs(rRealMC) < 1e-12 ? months : (1 + rRealMC) * (1 - Math.pow(1 + rRealMC, -months)) / rRealMC;
-  const solveSpendMC = (spendable, bridge, total) => { const pvB = annuityMC(bridge), pvT = annuityMC(total), pvA = pvT - pvB; if (pvT <= 0) return 0; if (income <= 0) return spendable / pvT; const cand = (spendable + income * pvA) / pvT; return cand >= income ? cand : (pvB > 0 ? spendable / pvB : cand); };
   const bands = R.points.map(() => []); // nominal balance at each chart point, under the headline spend
-  const bandsG = guardActive ? R.points.map(() => []) : null;
   for (let trial = 0; trial < MC_TRIALS; trial++){
-    let bal = v.currentSavings||0, bi = 0, biG = 0;
-    bands[bi++].push(bal); if (bandsG) bandsG[biG++].push(bal);
-    let prodB = 1, lastYearProd = null;
-    for (let m = 0; m < monthsRet; m++){
-      bal += contribAmt[m];
-      const gB = Math.exp(muB + sigB * gauss()); bal *= gB; prodB *= gB;
-      if ((m+1) % 12 === 0){ lastYearProd = prodB; prodB = 1; }
-      if ((m+1) % 12 === 0 || m === monthsRet-1){ bands[bi++].push(bal); if (bandsG) bandsG[biG++].push(bal); }
+    let bal = v.currentSavings||0, bi = 0;
+    bands[bi++].push(bal);
+    for (let m = 0; m < S.monthsRet; m++){
+      bal += S.contribAmt[m];
+      bal *= Math.exp(S.muB + S.sigB * gauss());
+      if ((m+1) % 12 === 0 || m === S.monthsRet-1) bands[bi++].push(bal);
     }
-    const priorDown = lastYearProd !== null && lastYearProd < 1; // last pre-retirement year down → first retirement year is a cut year
-    const balRetire = bal;
     // Retirement: A/S·B coefficients for the high regime (S ≥ income) and low regime (S ≤ income),
     // plus the actual balance path under the headline spend for the chart bands.
     let aH = bal, bH = 0, aL = bal, bL = 0, maxH = Infinity, maxL = Infinity;
-    let balG = bal, yearProd = 1, prevDown = false, curFactor = 1;
-    const gRet = riskActive ? retFlat.subarray(trial * N, trial * N + N) : guardActive ? new Float64Array(N) : null, factorRet = guardActive ? new Float64Array(N) : null;
-    if (riskActive) balRetires[trial] = balRetire;
     for (let m = 0; m < N; m++){
-      const inflF = inflRet[m], g = Math.exp(muA + sigA * gauss()), bridged = m >= delay;
-      if (guardActive){
-        if (m % 12 === 0){ const isCut = m === 0 ? priorDown : prevDown; curFactor = isCut ? 1 - cutFrac : 1; if (isCut) guardCutYears++; guardYearsTotal++; }
-        gRet[m] = g; factorRet[m] = curFactor;
-      } else if (riskActive) gRet[m] = g;
-      maxH = Math.min(maxH, (aH + (bridged ? income * inflF : 0)) / (bH + inflF));
+      const inflF = S.inflRet[m], g = Math.exp(S.muA + S.sigA * gauss()), bridged = m >= S.delay;
+      maxH = Math.min(maxH, (aH + (bridged ? S.income * inflF : 0)) / (bH + inflF));
       const denL = bL + (bridged ? 0 : inflF);
       if (denL > 0) maxL = Math.min(maxL, aL / denL); else if (aL < 0) maxL = -Infinity;
-      aH = (aH + (bridged ? income * inflF : 0)) * g; bH = (bH + inflF) * g;
+      aH = (aH + (bridged ? S.income * inflF : 0)) * g; bH = (bH + inflF) * g;
       aL *= g; if (!bridged) bL = (bL + inflF) * g; else bL *= g;
-      const w = (bridged ? Math.max(0, spend - income) : spend) * inflF;
+      const w = (bridged ? Math.max(0, S.spend - S.income) : S.spend) * inflF;
       bal = bal < w ? 0 : (bal - w) * g;
-      if (guardActive){ const wG = (bridged ? Math.max(0, spend * curFactor - income) : spend * curFactor) * inflF; balG = balG < wG ? 0 : (balG - wG) * g; }
-      yearProd *= g; if ((m+1) % 12 === 0){ prevDown = yearProd < 1; yearProd = 1; }
-      if ((m+1) % 12 === 0 || m === N-1){ bands[bi++].push(bal); if (bandsG) bandsG[biG++].push(balG); }
+      if ((m+1) % 12 === 0 || m === N-1) bands[bi++].push(bal);
     }
     if (bH > 0) maxH = Math.min(maxH, (aH - R.cushionFuture) / bH);
     if (bL > 0) maxL = Math.min(maxL, (aL - R.cushionFuture) / bL);
-    sMax[trial] = income > 0 && maxL < income ? maxL : maxH;
-    if (guardActive){
-      // Guardrailed spend is path-dependent (cut factor depends on prior-year returns), so no
-      // affine shortcut: bisect this path's exact maximum level spend S. Withdrawals are
-      // monotone in S, so success is monotone and bisection is exact to ~$1.
-      const simG = S => { let b = balRetire; for (let m = 0; m < N; m++){ const total = S * factorRet[m], pw = m >= delay ? Math.max(0, total - income) : total, w = pw * inflRet[m]; if (b < w - 1e-6) return false; b = (b - w) * gRet[m]; } return b >= R.cushionFuture - 1e-6; };
-      if (!simG(0)) gMax[trial] = -1;
-      else { let lo = 0, hi = Math.max(1, spend, income); while (simG(hi) && hi < 1e8) hi *= 2; for (let it = 0; it < 24; it++){ const mid = (lo + hi)/2; if (simG(mid)) lo = mid; else hi = mid; } gMax[trial] = lo; }
-    }
+    sMax[trial] = S.income > 0 && maxL < S.income ? maxL : maxH;
   }
-  const sorted = Float64Array.from(sMax).sort(), quantile = (arr, q) => arr[Math.min(arr.length-1, Math.max(0, Math.floor(q * arr.length)))];
+  const sorted = Float64Array.from(sMax).sort();
   const successAt = s => { let n = 0; for (const x of sMax) if (x >= s - 1e-6) n++; return n / MC_TRIALS; };
-  const bandPts = bands.map((vals, i) => { const s = Float64Array.from(vals).sort(); return {t: R.points[i].t, p10: quantile(s, .1), p50: quantile(s, .5), p90: quantile(s, .9)}; });
-  const deflate = yrs => Math.pow(1 + inflAnnual, yrs);
-  let guardrail = null;
-  if (guardActive){
-    const gSorted = Float64Array.from(gMax).sort(), gSuccessAt = s => { let n = 0; for (const x of gMax) if (x >= s - 1e-6) n++; return n / MC_TRIALS; };
-    const bandGPts = bandsG.map((vals, i) => { const s = Float64Array.from(vals).sort(); return {t: R.points[i].t, p10: quantile(s, .1), p50: quantile(s, .5), p90: quantile(s, .9)}; });
-    guardrail = { cut: v.guardrailCut, success: gSuccessAt(spend),
-      successDesired: Number.isFinite(v.desiredSpend) ? gSuccessAt(Math.max(0, v.desiredSpend)) : null,
-      spendAtTarget: Math.max(0, quantile(gSorted, 1 - v.mcSuccessTarget/100)),
-      medianEndToday: bandGPts[bandGPts.length-1].p50 / deflate(R.yrs + (v.retireYears||0)),
-      cutYearShare: guardYearsTotal > 0 ? guardCutYears / guardYearsTotal : 0, sMax: Array.from(gSorted) };
-  }
-  const spendAtTargetBase = Math.max(0, quantile(sorted, 1 - v.mcSuccessTarget/100));
-  let rbKFull = 1;
-  if (riskActive){
-    // Risk-based, run after the baseline distribution exists: the annual re-solve targets the
-    // spend supportable at the success target, not the median spend. The median re-solve is
-    // haircut by kFull at the full horizon, fading to no haircut as the remaining horizon
-    // shrinks (k = 1 − (1−kFull)·√(months left / N)) — raising to the median would reset every
-    // good year to a coin-flip and collapse success. Re-solve uses the entered real return from
-    // then on (no look-ahead at the path's future returns); stored returns drive the outcome.
-    rbKFull = spend > 0 ? Math.min(1, Math.max(0, spendAtTargetBase / spend)) : 1; const kFull = rbKFull;
-    for (let trial = 0; trial < MC_TRIALS; trial++){
-      const balRetire = balRetires[trial], gRet = retFlat.subarray(trial * N, trial * N + N);
-      const simR = S0 => {
-        let b = balRetire, cur = S0, failed = false, spendSum = 0, minSpend = Infinity, adj = 0, cuts = 0, raises = 0, anniv = 0;
-        for (let m = 0; m < N; m++){
-          const bridged = m >= delay;
-          if (!failed && m > 0 && m % 12 === 0){
-            anniv++;
-            const Mrem = N - m, k = 1 - (1 - kFull) * Math.sqrt(Mrem / N);
-            const St = k * solveSpendMC(Math.max(0, b / inflRet[m] - R.cushionToday * Math.pow(1 + rRealMC, -Mrem)), Math.min(Math.max(delay - m, 0), Mrem), Mrem);
-            if (cur <= 0){ if (St > 0){ cur = St; raises++; adj++; } }
-            else if (St > cur * (1 + rbMinFrac)){ cur = St; raises++; adj++; }
-            else if (St < cur * (1 - rbMinFrac)){ cur = Math.max(0, cur + rbCutStepFrac * (St - cur)); cuts++; adj++; }
-          }
-          if (failed){ const paid = bridged ? income : 0; spendSum += paid; if (paid < minSpend) minSpend = paid; continue; }
-          const w = (bridged ? Math.max(0, cur - income) : cur) * inflRet[m];
-          if (b < w - 1e-6){ failed = true; const paid = bridged ? income : 0; spendSum += paid; if (paid < minSpend) minSpend = paid; b = 0; continue; }
-          b = (b - w) * gRet[m]; spendSum += cur; if (cur < minSpend) minSpend = cur;
-        }
-        return { success: !failed && b >= R.cushionFuture - 1e-6, spendSum, minSpend: Number.isFinite(minSpend) ? minSpend : 0, endBal: b, adj, cuts, raises, anniv };
-      };
-      const stHead = simR(spend); if (stHead.success) rbSuccHead++;
-      let stTest = stHead;
-      if (Number.isFinite(v.desiredSpend)){ const stDes = simR(Math.max(0, v.desiredSpend)); if (stDes.success) rbSuccDes++; stTest = stDes; }
-      rbSpendSum += stTest.spendSum; rbEndBals[trial] = stTest.endBal; rbMinSpends[trial] = stTest.minSpend;
-      rbAdjYears += stTest.adj; rbCutYears += stTest.cuts; rbRaiseYears += stTest.raises; rbAnnivTotal += stTest.anniv;
-    }
-  }
-  let riskGuardrail = null;
-  if (riskActive){
-    const rbEnds = Float64Array.from(rbEndBals).sort(), rbMins = Float64Array.from(rbMinSpends).sort();
-    riskGuardrail = { minChange: v.riskMinChange, cutStep: v.riskCutStep, haircut: rbKFull, success: rbSuccHead / MC_TRIALS,
-      successDesired: Number.isFinite(v.desiredSpend) ? rbSuccDes / MC_TRIALS : null,
-      avgSpendToday: rbSpendSum / (MC_TRIALS * N),
-      minSpendMedian: quantile(rbMins, .5), minSpendP10: quantile(rbMins, .1),
-      medianEndToday: Math.max(0, quantile(rbEnds, .5) / deflate(R.yrs + (v.retireYears||0))),
-      adjYearShare: rbAnnivTotal > 0 ? rbAdjYears / rbAnnivTotal : 0,
-      cutYearShare: rbAnnivTotal > 0 ? rbCutYears / rbAnnivTotal : 0,
-      raiseYearShare: rbAnnivTotal > 0 ? rbRaiseYears / rbAnnivTotal : 0 };
-  }
-  return { trials: MC_TRIALS, success: successAt(spend), sMax: Array.from(sorted),
+  const bandPts = bands.map((vals, i) => { const s = Float64Array.from(vals).sort(); return {t: R.points[i].t, p10: mcQuantile(s, .1), p50: mcQuantile(s, .5), p90: mcQuantile(s, .9)}; });
+  const deflate = yrs => Math.pow(1 + S.inflAnnual, yrs);
+  return { trials: MC_TRIALS, success: successAt(S.spend), sMax: Array.from(sorted),
            successDesired: Number.isFinite(v.desiredSpend) ? successAt(Math.max(0, v.desiredSpend)) : null,
-           spendAtTarget: Math.max(0, quantile(sorted, 1 - v.mcSuccessTarget/100)), successTarget: v.mcSuccessTarget,
+           spendAtTarget: Math.max(0, mcQuantile(sorted, 1 - v.mcSuccessTarget/100)), successTarget: v.mcSuccessTarget,
            medianEndToday: bandPts[bandPts.length-1].p50 / deflate(R.yrs + (v.retireYears||0)),
-           p10EndToday: bandPts[bandPts.length-1].p10 / deflate(R.yrs + (v.retireYears||0)), bands: bandPts, guardrail, riskGuardrail };
+           p10EndToday: bandPts[bandPts.length-1].p10 / deflate(R.yrs + (v.retireYears||0)), bands: bandPts, guardrail: null, riskGuardrail: null };
+}
+/** Down-year guardrail, replayed on the same seeded paths. Guardrailed spend is
+ *  path-dependent (cut factor depends on prior-year returns), so no affine shortcut:
+ *  bisect each path's exact maximum level spend S. Withdrawals are monotone in S,
+ *  so success is monotone and bisection is exact to ~$1. */
+function guardrailMC(R){
+  const S = mcSetup(R), v = S.v, N = S.N;
+  if (N <= 0 || !guardIsActive(R)) return null;
+  const gauss = makeGauss(), cutFrac = v.guardrailCut/100;
+  const gMax = new Float64Array(MC_TRIALS), endBalsG = new Float64Array(MC_TRIALS);
+  let guardCutYears = 0, guardYearsTotal = 0;
+  for (let trial = 0; trial < MC_TRIALS; trial++){
+    const { balRetire, priorDown } = accumulateToRetirement(S, gauss);
+    const gRet = new Float64Array(N), factorRet = new Float64Array(N);
+    let balG = balRetire, yearProd = 1, prevDown = false, curFactor = 1;
+    for (let m = 0; m < N; m++){
+      const g = Math.exp(S.muA + S.sigA * gauss());
+      if (m % 12 === 0){ const isCut = m === 0 ? priorDown : prevDown; curFactor = isCut ? 1 - cutFrac : 1; if (isCut) guardCutYears++; guardYearsTotal++; }
+      gRet[m] = g; factorRet[m] = curFactor;
+      const wG = (m >= S.delay ? Math.max(0, S.spend * curFactor - S.income) : S.spend * curFactor) * S.inflRet[m];
+      balG = balG < wG ? 0 : (balG - wG) * g;
+      yearProd *= g; if ((m+1) % 12 === 0){ prevDown = yearProd < 1; yearProd = 1; }
+    }
+    endBalsG[trial] = balG;
+    const simG = Sv => { let b = balRetire; for (let m = 0; m < N; m++){ const total = Sv * factorRet[m], pw = m >= S.delay ? Math.max(0, total - S.income) : total, w = pw * S.inflRet[m]; if (b < w - 1e-6) return false; b = (b - w) * gRet[m]; } return b >= R.cushionFuture - 1e-6; };
+    if (!simG(0)) gMax[trial] = -1;
+    else { let lo = 0, hi = Math.max(1, S.spend, S.income); while (simG(hi) && hi < 1e8) hi *= 2; for (let it = 0; it < 24; it++){ const mid = (lo + hi)/2; if (simG(mid)) lo = mid; else hi = mid; } gMax[trial] = lo; }
+  }
+  const gSorted = Float64Array.from(gMax).sort(), gSuccessAt = s => { let n = 0; for (const x of gMax) if (x >= s - 1e-6) n++; return n / MC_TRIALS; };
+  const endsSorted = Float64Array.from(endBalsG).sort(), deflate = yrs => Math.pow(1 + S.inflAnnual, yrs);
+  return { cut: v.guardrailCut, success: gSuccessAt(S.spend),
+    successDesired: Number.isFinite(v.desiredSpend) ? gSuccessAt(Math.max(0, v.desiredSpend)) : null,
+    spendAtTarget: Math.max(0, mcQuantile(gSorted, 1 - v.mcSuccessTarget/100)),
+    medianEndToday: mcQuantile(endsSorted, .5) / deflate(R.yrs + (v.retireYears||0)),
+    cutYearShare: guardYearsTotal > 0 ? guardCutYears / guardYearsTotal : 0, sMax: Array.from(gSorted) };
+}
+/** Risk-based guardrails, replayed on the same seeded paths. Run only once the baseline
+ *  distribution exists: the annual re-solve targets the spend supportable at the success
+ *  target, not the median spend. The median re-solve is haircut by kFull at the full
+ *  horizon, fading to no haircut as the remaining horizon shrinks
+ *  (k = 1 − (1−kFull)·√(months left / N)) — raising to the median would reset every
+ *  good year to a coin-flip and collapse success. Re-solve uses the entered real return
+ *  from then on (no look-ahead at the path's future returns). */
+function riskGuardrailMC(R, spendAtTargetBase){
+  const S = mcSetup(R), v = S.v, N = S.N;
+  if (N <= 0 || !v.riskGuardEnabled) return null;
+  const gauss = makeGauss();
+  const rbMinFrac = (v.riskMinChange||0)/100, rbCutStepFrac = (v.riskCutStep||0)/100;
+  const rbEndBals = new Float64Array(MC_TRIALS), rbMinSpends = new Float64Array(MC_TRIALS);
+  let rbSuccHead = 0, rbSuccDes = 0, rbSpendSum = 0, rbAdjYears = 0, rbCutYears = 0, rbRaiseYears = 0, rbAnnivTotal = 0;
+  const rRealMC = R.rReal, annuityMC = months => months <= 0 ? 0 : Math.abs(rRealMC) < 1e-12 ? months : (1 + rRealMC) * (1 - Math.pow(1 + rRealMC, -months)) / rRealMC;
+  const solveSpendMC = (spendable, bridge, total) => { const pvB = annuityMC(bridge), pvT = annuityMC(total), pvA = pvT - pvB; if (pvT <= 0) return 0; if (S.income <= 0) return spendable / pvT; const cand = (spendable + S.income * pvA) / pvT; return cand >= S.income ? cand : (pvB > 0 ? spendable / pvB : cand); };
+  const rbKFull = S.spend > 0 ? Math.min(1, Math.max(0, spendAtTargetBase / S.spend)) : 1, kFull = rbKFull;
+  for (let trial = 0; trial < MC_TRIALS; trial++){
+    const { balRetire } = accumulateToRetirement(S, gauss);
+    const gRet = new Float64Array(N);
+    for (let m = 0; m < N; m++) gRet[m] = Math.exp(S.muA + S.sigA * gauss());
+    const simR = S0 => {
+      let b = balRetire, cur = S0, failed = false, spendSum = 0, minSpend = Infinity, adj = 0, cuts = 0, raises = 0, anniv = 0;
+      for (let m = 0; m < N; m++){
+        const bridged = m >= S.delay;
+        if (!failed && m > 0 && m % 12 === 0){
+          anniv++;
+          const Mrem = N - m, k = 1 - (1 - kFull) * Math.sqrt(Mrem / N);
+          const St = k * solveSpendMC(Math.max(0, b / S.inflRet[m] - R.cushionToday * Math.pow(1 + rRealMC, -Mrem)), Math.min(Math.max(S.delay - m, 0), Mrem), Mrem);
+          if (cur <= 0){ if (St > 0){ cur = St; raises++; adj++; } }
+          else if (St > cur * (1 + rbMinFrac)){ cur = St; raises++; adj++; }
+          else if (St < cur * (1 - rbMinFrac)){ cur = Math.max(0, cur + rbCutStepFrac * (St - cur)); cuts++; adj++; }
+        }
+        if (failed){ const paid = bridged ? S.income : 0; spendSum += paid; if (paid < minSpend) minSpend = paid; continue; }
+        const w = (bridged ? Math.max(0, cur - S.income) : cur) * S.inflRet[m];
+        if (b < w - 1e-6){ failed = true; const paid = bridged ? S.income : 0; spendSum += paid; if (paid < minSpend) minSpend = paid; b = 0; continue; }
+        b = (b - w) * gRet[m]; spendSum += cur; if (cur < minSpend) minSpend = cur;
+      }
+      return { success: !failed && b >= R.cushionFuture - 1e-6, spendSum, minSpend: Number.isFinite(minSpend) ? minSpend : 0, endBal: b, adj, cuts, raises, anniv };
+    };
+    const stHead = simR(S.spend); if (stHead.success) rbSuccHead++;
+    let stTest = stHead;
+    if (Number.isFinite(v.desiredSpend)){ const stDes = simR(Math.max(0, v.desiredSpend)); if (stDes.success) rbSuccDes++; stTest = stDes; }
+    rbSpendSum += stTest.spendSum; rbEndBals[trial] = stTest.endBal; rbMinSpends[trial] = stTest.minSpend;
+    rbAdjYears += stTest.adj; rbCutYears += stTest.cuts; rbRaiseYears += stTest.raises; rbAnnivTotal += stTest.anniv;
+  }
+  const rbEnds = Float64Array.from(rbEndBals).sort(), rbMins = Float64Array.from(rbMinSpends).sort(), deflate = yrs => Math.pow(1 + S.inflAnnual, yrs);
+  return { minChange: v.riskMinChange, cutStep: v.riskCutStep, haircut: rbKFull, success: rbSuccHead / MC_TRIALS,
+    successDesired: Number.isFinite(v.desiredSpend) ? rbSuccDes / MC_TRIALS : null,
+    avgSpendToday: rbSpendSum / (MC_TRIALS * N),
+    minSpendMedian: mcQuantile(rbMins, .5), minSpendP10: mcQuantile(rbMins, .1),
+    medianEndToday: Math.max(0, mcQuantile(rbEnds, .5) / deflate(R.yrs + (v.retireYears||0))),
+    adjYearShare: rbAnnivTotal > 0 ? rbAdjYears / rbAnnivTotal : 0,
+    cutYearShare: rbAnnivTotal > 0 ? rbCutYears / rbAnnivTotal : 0,
+    raiseYearShare: rbAnnivTotal > 0 ? rbRaiseYears / rbAnnivTotal : 0 };
 }
 
 /** Plan that rewrites savings/contributions so sustainable spending meets the desired level, in
@@ -361,17 +381,22 @@ function syncPresets(){
 /** Monte Carlo runs ~1,000 paths × every month and takes hundreds of ms — far too
  *  slow to run synchronously on every keystroke/slider tick. The deterministic
  *  headline above is cheap and stays instant; only the MC is deferred: it runs
- *  once, 200 ms after the last render, for the latest inputs only. Results are
- *  cached by every input the simulation actually reads (R.san plus the derived
- *  spend/cushion it is scored against), so renders that change nothing the MC
- *  reads — e.g. flipping the back-fill toggle — reuse the last result instantly
- *  instead of scheduling a recompute. While a recompute is pending the card
- *  shows a calculating state rather than stale numbers for old inputs, and the
- *  chart band is dropped until the fresh bands land. */
+ *  once, 200 ms after the last render, for the latest inputs only. Baseline and
+ *  each guardrail strategy are cached separately: the baseline key excludes every
+ *  strategy field, so toggling a guardrail (or changing its cut) reuses the
+ *  headline result instantly and only the missing strategy replay is scheduled —
+ *  strategies replay the same seeded paths, so their numbers still compare
+ *  against exactly the paths behind the cached headline. While a recompute is
+ *  pending the card shows a calculating state rather than stale numbers for old
+ *  inputs, and the chart band is dropped until the fresh bands land. */
 const MC_DEBOUNCE_MS = 200;
 function mcKeyFor(R){
-  return JSON.stringify([R.san, R.yrs, R.contribMonths, R.incomeDelayMonths, R.totalSpendToday, R.cushionFuture]);
+  const s = { ...R.san };
+  delete s.guardrailEnabled; delete s.guardrailCut; delete s.riskGuardEnabled; delete s.riskMinChange; delete s.riskCutStep;
+  return JSON.stringify([s, R.yrs, R.contribMonths, R.incomeDelayMonths, R.totalSpendToday, R.cushionFuture]);
 }
+function guardKeyFor(R){ return mcKeyFor(R) + "|g:" + R.san.guardrailCut; }
+function riskKeyFor(R){ return mcKeyFor(R) + "|r:" + R.san.riskMinChange + "," + R.san.riskCutStep; }
 /** Animate a money headline from its previous value (D3 tween; instant if unchanged). */
 function tweenMoney(el, value){
   if (!window.d3 || !Number.isFinite(value)){ el.textContent = fmt.format(value); el._v = value; return; }
@@ -439,7 +464,7 @@ function renderRiskGuardrails(MC, R, v, pending = false){
   $("riskMinSpend").textContent = fmt.format(G.minSpendMedian);
   $("riskMinNote").textContent = `lowest month on the median path · 10th-pct paths dip to ${fmt.format(G.minSpendP10)}/mo (starting from ${fmt.format(testSpend)}/mo)`;
 }
-function applyMonteCarlo(MC, R, v){
+function applyMonteCarlo(MC, R, v, overlaysPending = false){
   if (!MC){
     $("mcSuccessLabel").textContent = "Chance the headline spending lasts";
     $("mcSuccess").textContent = "—";
@@ -467,8 +492,8 @@ function applyMonteCarlo(MC, R, v){
     dMC.hidden = false;
     dMC.textContent = `For comparison, the headline ${fmt.format(R.totalSpendToday)}/mo lasted in ${Math.round(MC.success * 100)}% of simulated paths. Spending ${fmt.format(MC.spendAtTarget)}/mo would have lasted in ${MC.successTarget}%.`;
   } else dMC.hidden = true;
-  renderGuardrails(MC, R, v);
-  renderRiskGuardrails(MC, R, v);
+  renderGuardrails(MC, R, v, overlaysPending && !MC.guardrail);
+  renderRiskGuardrails(MC, R, v, overlaysPending && !MC.riskGuardrail);
   drawMcChart(MC, R, true);
 }
 function showMonteCarloPending(R, v){
@@ -484,14 +509,18 @@ function showMonteCarloPending(R, v){
   renderRiskGuardrails(null, R, v, true);
   drawMcChart(null, null, false);
 }
-function scheduleMonteCarlo(R, v, key){
+function scheduleMonteCarlo(R, v, job){
   const seq = ++mcSeq;
   clearTimeout(mcTimer);
   mcTimer = setTimeout(() => {
     mcTimer = null;
     if (seq !== mcSeq) return; // a newer render superseded this one
-    const MC = monteCarlo(R);
-    mcCache = { key, value: MC, has: true };
+    let base = mcCache.value;
+    if (job.needBase){ base = monteCarlo(R); mcCache = { key: job.baseKey, value: base, has: true }; }
+    let guardrail = null, riskGuardrail = null;
+    if (guardIsActive(R)){ if (job.needGuard){ guardrail = guardrailMC(R); guardCache = { key: job.gKey, value: guardrail, has: true }; } else guardrail = guardCache.value; }
+    if (R.san.riskGuardEnabled){ if (job.needRisk){ riskGuardrail = base ? riskGuardrailMC(R, base.spendAtTarget) : null; riskCache = { key: job.rKey, value: riskGuardrail, has: true }; } else riskGuardrail = riskCache.value; }
+    const MC = base ? { ...base, guardrail, riskGuardrail } : null;
     applyMonteCarlo(MC, R, v);
     if (chartData){ chartData.mc = MC ? MC.bands : null; drawChart(); }
   }, MC_DEBOUNCE_MS);
@@ -546,17 +575,25 @@ function render(){
   $("scenLow").textContent = fmt.format(scen(-2)); $("scenBase").textContent = fmt.format(R.totalSpendToday); $("scenHigh").textContent = fmt.format(scen(2));
   { const vals = [scen(-2), R.totalSpendToday, scen(2)], mx = Math.max(...vals, 1);
     if (window.d3) ["scenLowBar","scenBaseBar","scenHighBar"].forEach((id, i) => d3.select("#"+id).transition().duration(450).ease(d3.easeCubicOut).style("width", (vals[i]/mx*100) + "%")); }
-  const mcKey = mcKeyFor(R);
+  const baseKey = mcKeyFor(R), gKey = guardKeyFor(R), rKey = riskKeyFor(R);
+  const baseHit = mcCache.has && mcCache.key === baseKey;
+  const needGuard = guardIsActive(R) && !(guardCache.has && guardCache.key === gKey);
+  const needRisk = !!R.san.riskGuardEnabled && !(riskCache.has && riskCache.key === rKey);
   let MC = null;
-  if (mcCache.has && mcCache.key === mcKey){
+  if (baseHit && !needGuard && !needRisk){
     mcSeq++;
     clearTimeout(mcTimer);
     mcTimer = null;
-    MC = mcCache.value;
+    MC = { ...mcCache.value, guardrail: guardIsActive(R) ? guardCache.value : null, riskGuardrail: R.san.riskGuardEnabled ? riskCache.value : null };
     applyMonteCarlo(MC, R, v);
+  } else if (baseHit){
+    // Headline is unaffected by the strategies: show it instantly, replay only the missing strategy.
+    MC = { ...mcCache.value, guardrail: guardIsActive(R) && !needGuard ? guardCache.value : null, riskGuardrail: R.san.riskGuardEnabled && !needRisk ? riskCache.value : null };
+    applyMonteCarlo(MC, R, v, true);
+    scheduleMonteCarlo(R, v, { baseKey, gKey, rKey, needBase: false, needGuard, needRisk });
   } else {
     showMonteCarloPending(R, v);
-    scheduleMonteCarlo(R, v, mcKey);
+    scheduleMonteCarlo(R, v, { baseKey, gKey, rKey, needBase: true, needGuard, needRisk });
   }
   $("potFuture").textContent = fmt.format(R.potFuture);
   $("potToday").textContent = `= ${fmt.format(R.potToday)} in today's dollars`;
