@@ -9,6 +9,7 @@ const compact = v => "$" + Intl.NumberFormat("en-US",{notation:"compact",maximum
 const mRate = annualPct => Math.pow(1 + annualPct/100, 1/12) - 1; // effective monthly
 
 let basis = "today", chartData = null, lastBackfill = null, backfillMode = "monthly", stickySolve = false, resolving = false, sharedView = false;
+let chartView = "balance", showCum = true, showMC = true, lastMcVis = null;
 let mcTimer = null, mcSeq = 0, mcCache = { key: null, value: null, has: false };
 
 /** Keep only digits and the first decimal point (commas, $, spaces, letters dropped). */
@@ -226,7 +227,7 @@ function monteCarlo(R){
   const successAt = s => { let n = 0; for (const x of sMax) if (x >= s - 1e-6) n++; return n / MC_TRIALS; };
   const bandPts = bands.map((vals, i) => { const s = Float64Array.from(vals).sort(); return {t: R.points[i].t, p10: quantile(s, .1), p50: quantile(s, .5), p90: quantile(s, .9)}; });
   const deflate = yrs => Math.pow(1 + inflAnnual, yrs);
-  return { trials: MC_TRIALS, success: successAt(spend),
+  return { trials: MC_TRIALS, success: successAt(spend), sMax: Array.from(sorted),
            successDesired: Number.isFinite(v.desiredSpend) ? successAt(Math.max(0, v.desiredSpend)) : null,
            spend85: Math.max(0, quantile(sorted, .15)),
            medianEndToday: bandPts[bandPts.length-1].p50 / deflate(R.yrs + (v.retireYears||0)),
@@ -264,6 +265,15 @@ const MC_DEBOUNCE_MS = 200;
 function mcKeyFor(R){
   return JSON.stringify([R.san, R.yrs, R.contribMonths, R.incomeDelayMonths, R.totalSpendToday, R.cushionFuture]);
 }
+/** Animate a money headline from its previous value (D3 tween; instant if unchanged). */
+function tweenMoney(el, value){
+  if (!window.d3 || !Number.isFinite(value)){ el.textContent = fmt.format(value); el._v = value; return; }
+  const prev = el._v; el._v = value;
+  if (prev === undefined || prev === value){ el.textContent = fmt.format(value); return; }
+  d3.select(el).interrupt().transition().duration(380).ease(d3.easeCubicOut)
+    .tween("text", () => { const i = d3.interpolateNumber(prev, value); return t => { el.textContent = fmt.format(i(t)); }; })
+    .on("end", () => { el.textContent = fmt.format(value); });
+}
 function applyMonteCarlo(MC, R, v){
   if (!MC){
     $("mcSuccessLabel").textContent = "Chance the headline spending lasts";
@@ -273,6 +283,7 @@ function applyMonteCarlo(MC, R, v){
     $("mcMedianEnd").textContent = "—";
     $("mcMedianEndNote").textContent = "in today's $";
     $("mcDesiredOut").hidden = true;
+    drawMcChart(null, null, false);
     return;
   }
   $("mcSuccessLabel").textContent = `Chance ${fmt.format(R.totalSpendToday)}/mo lasts ${v.retireYears} yrs`;
@@ -289,6 +300,7 @@ function applyMonteCarlo(MC, R, v){
       ? `✅ Your desired ${fmt.format(v.desiredSpend)}/mo lasted in essentially all ${MC.trials.toLocaleString()} simulated paths — market swings at this volatility don't break it.`
       : `🎲 Your desired ${fmt.format(v.desiredSpend)}/mo (today's $) lasted the full ${v.retireYears} years in ${pct}% of simulated paths. Spending ${fmt.format(MC.spend85)}/mo would have lasted in 85%.`;
   } else dMC.hidden = true;
+  drawMcChart(MC, R, true);
 }
 function showMonteCarloPending(R, v){
   $("mcSuccessLabel").textContent = `Chance ${fmt.format(R.totalSpendToday)}/mo lasts ${v.retireYears} yrs`;
@@ -298,6 +310,7 @@ function showMonteCarloPending(R, v){
   $("mcMedianEnd").textContent = "…";
   $("mcMedianEndNote").textContent = "calculating 1,000 simulated paths…";
   $("mcDesiredOut").hidden = true;
+  drawMcChart(null, null, false);
 }
 function scheduleMonteCarlo(R, v, key){
   const seq = ++mcSeq;
@@ -330,7 +343,7 @@ function render(){
     `<div class="tl spend"><b>🌅 ${R.retireYearEff}–${R.retireYearEff + (v.retireYears||0)} · Spending</b><span>${fmt.format(R.totalSpendToday)}/mo in today's $</span></div>`;
 
   $("vYears").textContent = v.retireYears;
-  $("spendMonth").textContent = fmt.format(R.totalSpendToday);
+  tweenMoney($("spendMonth"), R.totalSpendToday);
   $("spendYear").textContent = fmt.format(R.totalSpendToday * 12);
   $("spendFirst").textContent = fmt.format(R.totalSpendToday * Math.pow(1 + R.san.inflation/100, R.yrs));
   $("portfolioSpend").textContent = fmt.format(R.portfolioSpendToday);
@@ -341,6 +354,8 @@ function render(){
   $("swr").textContent = R.potToday > 0 ? (R.portfolioSpendToday*12 / R.potToday * 100).toFixed(1) + "%" : "—";
   const scen = d => compute({ ...v, returnBefore: (v.returnBefore||0) + d, returnAfter: (v.returnAfter||0) + d }).totalSpendToday;
   $("scenLow").textContent = fmt.format(scen(-2)); $("scenBase").textContent = fmt.format(R.totalSpendToday); $("scenHigh").textContent = fmt.format(scen(2));
+  { const vals = [scen(-2), R.totalSpendToday, scen(2)], mx = Math.max(...vals, 1);
+    if (window.d3) ["scenLowBar","scenBaseBar","scenHighBar"].forEach((id, i) => d3.select("#"+id).transition().duration(450).ease(d3.easeCubicOut).style("width", (vals[i]/mx*100) + "%")); }
   const mcKey = mcKeyFor(R);
   let MC = null;
   if (mcCache.has && mcCache.key === mcKey){
@@ -428,53 +443,121 @@ function render(){
   }
 
 
-  chartData = {points: R.points, yrs: R.yrs, retireYear: R.retireYearEff, inflation: R.san.inflation/100, mc: MC ? MC.bands : null};
+  chartData = {points: R.points, yrs: R.yrs, contribT: R.contribMonths/12, retireYear: R.retireYearEff, inflation: R.san.inflation/100, mc: MC ? MC.bands : null};
   drawChart();
   save(v);
 }
 
-function drawChart(){
-  if (!chartData) return;
-  const cv = $("chart"), wrap = cv.parentElement, dpr = devicePixelRatio || 1;
-  const W = wrap.clientWidth, H = cv.clientHeight || 320;
-  cv.width = W*dpr; cv.height = H*dpr;
-  const ctx = cv.getContext("2d"); ctx.scale(dpr,dpr); ctx.clearRect(0,0,W,H);
-  const pts = chartData.points.map(p => ({t:p.t, bal: basis==="today" ? p.bal/Math.pow(1+chartData.inflation,p.t) : p.bal,
-                                                      cum: basis==="today" ? p.cumReal : p.cum}));
-  const mc = chartData.mc ? chartData.mc.map(p => ({t:p.t, p10: basis==="today" ? p.p10/Math.pow(1+chartData.inflation,p.t) : p.p10,
-                                                             p50: basis==="today" ? p.p50/Math.pow(1+chartData.inflation,p.t) : p.p50,
-                                                             p90: basis==="today" ? p.p90/Math.pow(1+chartData.inflation,p.t) : p.p90})) : null;
-  const pad = {l:58, r:14, t:14, b:28}, iw = W-pad.l-pad.r, ih = H-pad.t-pad.b;
-  const maxT = Math.max(...pts.map(p=>p.t), 1), maxV = Math.max(...pts.map(p=>p.bal), ...(mc ? mc.map(p=>p.p90) : []), 1) * 1.08;
-  const X = t => pad.l + t/maxT*iw, Y = val => pad.t + ih - val/maxV*ih;
-  ctx.font = "11px system-ui"; ctx.fillStyle = "#66736b"; ctx.strokeStyle = "#e3e9e3";
-  for (let i=0;i<=4;i++){ const val = maxV*i/4, y = Y(val); ctx.beginPath(); ctx.moveTo(pad.l,y); ctx.lineTo(W-pad.r,y); ctx.stroke(); ctx.fillText(compact(val), 6, y+4); }
-  for (let yr=0; yr<=maxT; yr+=Math.max(1,Math.round(maxT/8))){ ctx.fillText(String(nowYear+yr), X(yr)-12, H-8); }
-  // balance area, split at retirement
-  const line = (key, color, dash) => { ctx.beginPath(); ctx.setLineDash(dash||[]); pts.forEach((p,i)=> i?ctx.lineTo(X(p.t),Y(p[key])):ctx.moveTo(X(p.t),Y(p[key]))); ctx.strokeStyle=color; ctx.lineWidth=2; ctx.stroke(); ctx.setLineDash([]); };
-  ctx.beginPath(); pts.forEach((p,i)=> i?ctx.lineTo(X(p.t),Y(p.bal)):ctx.moveTo(X(p.t),Y(p.bal))); ctx.lineTo(X(maxT),Y(0)); ctx.lineTo(X(0),Y(0)); ctx.closePath(); ctx.fillStyle="rgba(14,122,95,.13)"; ctx.fill();
-  if (mc){ ctx.beginPath(); mc.forEach((p,i)=> i?ctx.lineTo(X(p.t),Y(p.p90)):ctx.moveTo(X(p.t),Y(p.p90))); [...mc].reverse().forEach(p=>ctx.lineTo(X(p.t),Y(p.p10))); ctx.closePath(); ctx.fillStyle="rgba(23,33,27,.10)"; ctx.fill();
-           ctx.beginPath(); mc.forEach((p,i)=> i?ctx.lineTo(X(p.t),Y(p.p50)):ctx.moveTo(X(p.t),Y(p.p50))); ctx.setLineDash([6,4]); ctx.strokeStyle="#17211b"; ctx.lineWidth=1.5; ctx.stroke(); ctx.setLineDash([]); }
-  line("bal", "#0e7a5f"); line("cum", "#e9a13b", [5,4]);
-  ctx.beginPath(); pts.filter(p=>p.t>=chartData.yrs).forEach((p,i)=> i?ctx.lineTo(X(p.t),Y(p.bal)):ctx.moveTo(X(p.t),Y(p.bal))); ctx.strokeStyle="#c4553b"; ctx.lineWidth=2; ctx.stroke();
-  const rx = X(chartData.yrs);
-  ctx.beginPath(); ctx.setLineDash([4,4]); ctx.moveTo(rx,pad.t); ctx.lineTo(rx,pad.t+ih); ctx.strokeStyle="#c4553b"; ctx.stroke(); ctx.setLineDash([]);
-  ctx.fillStyle="#c4553b"; ctx.fillText(`Retire ${chartData.retireYear}`, Math.min(rx+6, W-90), pad.t+12);
-  cv._pts = pts; cv._mc = mc; cv._geom = {X, Y, pad, maxT, maxV};
+function drawChart(animate = true){
+  if (!chartData || !window.d3) return;
+  const wrap = $("chart"), W = wrap.clientWidth || 600, H = W < 560 ? 280 : 340;
+  const deflate = t => basis === "today" ? 1/Math.pow(1+chartData.inflation, t) : 1;
+  const pts = chartData.points.map(p => ({ t: p.t, bal: p.bal * deflate(p.t), cum: 0, growth: 0 }));
+  // Today-$: cumReal is already in today's dollars; future-$: nominal cum. Growth is the residual.
+  chartData.points.forEach((p, i) => { pts[i].cum = basis === "today" ? p.cumReal : p.cum; pts[i].growth = pts[i].bal - pts[i].cum; });
+  const mc = chartData.mc ? chartData.mc.map(p => ({ t: p.t, p10: p.p10 * deflate(p.t), p50: p.p50 * deflate(p.t), p90: p.p90 * deflate(p.t) })) : null;
+  const m = { l: 58, r: 14, t: 22, b: 28 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const maxT = Math.max(...pts.map(p => p.t), 1);
+  const maxV = Math.max(...pts.map(p => p.bal), ...(showMC && mc ? mc.map(p => p.p90) : []), 1) * 1.08;
+  const x = d3.scaleLinear().domain([0, maxT]).range([m.l, m.l + iw]);
+  const y = d3.scaleLinear().domain([0, maxV]).range([m.t + ih, m.t]).nice();
+  const svg = d3.select(wrap).selectAll("svg").data([null]).join("svg").attr("width", W).attr("height", H).attr("role", "img");
+  const defs = svg.selectAll("defs").data([null]).join("defs");
+  const grad = defs.selectAll("linearGradient#balGrad").data([null]).join("linearGradient").attr("id", "balGrad").attr("x1", 0).attr("y1", 0).attr("x2", 0).attr("y2", 1);
+  grad.selectAll("stop").data([[0, .28], [1, .02]]).join("stop").attr("offset", d => d[1] * 100 + "%").attr("stop-color", "#0e7a5f").attr("stop-opacity", d => d[1]);
+  const tr = animate ? d3.transition().duration(500).ease(d3.easeCubicOut) : d3.transition().duration(0);
+  const g = svg.selectAll("g.root").data([null]).join("g").attr("class", "root");
+  // Phase bands: saving / coasting / spending
+  const phases = [
+    { x0: 0, x1: chartData.contribT, label: "💰 Saving", fill: "rgba(14,122,95,.07)" },
+    { x0: chartData.contribT, x1: chartData.yrs, label: "🌿 Coasting", fill: "rgba(233,161,59,.10)" },
+    { x0: chartData.yrs, x1: maxT, label: "🌅 Spending", fill: "rgba(196,85,59,.06)" }
+  ].filter(p => p.x1 > p.x0);
+  const ph = g.selectAll("g.phases").data([null]).join("g").attr("class", "phases");
+  ph.selectAll("rect").data(phases).join("rect").transition(tr).attr("x", d => x(d.x0)).attr("width", d => Math.max(0, x(d.x1) - x(d.x0))).attr("y", m.t).attr("height", ih).attr("fill", d => d.fill);
+  ph.selectAll("text").data(phases).join("text").attr("class", "phase-label").transition(tr).attr("x", d => x(d.x0) + 8).attr("y", m.t + 14).attr("opacity", d => x(d.x1) - x(d.x0) > 64 ? 1 : 0).text(d => d.label);
+  // Axes + grid
+  g.selectAll("g.axis-y").data([null]).join("g").attr("class", "axis-y grid").attr("transform", `translate(${m.l},0)`).transition(tr).call(d3.axisLeft(y).ticks(5).tickFormat(compact).tickSize(-iw));
+  g.selectAll("g.axis-x").data([null]).join("g").attr("class", "axis-x").attr("transform", `translate(0,${m.t + ih})`).transition(tr).call(d3.axisBottom(x).ticks(Math.min(9, maxT)).tickFormat(t => nowYear + Math.round(t)));
+  const lineBal = d3.line().x(d => x(d.t)).y(d => y(Math.max(0, d.bal))).curve(d3.curveMonotoneX);
+  const areaBal = d3.area().x(d => x(d.t)).y0(y(0)).y1(d => y(Math.max(0, d.bal))).curve(d3.curveMonotoneX);
+  const areaCum = d3.area().x(d => x(d.t)).y0(y(0)).y1(d => y(Math.max(0, Math.min(d.cum, d.bal)))).curve(d3.curveMonotoneX);
+  const areaGrowth = d3.area().x(d => x(d.t)).y0(d => y(Math.max(0, Math.min(d.cum, d.bal)))).y1(d => y(Math.max(0, d.bal))).curve(d3.curveMonotoneX);
+  const areaMC = d3.area().x(d => x(d.t)).y0(d => y(Math.max(0, d.p10))).y1(d => y(Math.max(0, d.p90))).curve(d3.curveMonotoneX);
+  const comp = chartView === "composition";
+  const P = (sel, cls) => g.selectAll("path." + cls).data([null]).join("path").attr("class", cls);
+  P(null, "mc-band").attr("fill", "rgba(23,33,27,.10)").attr("stroke", "none").transition(tr).attr("d", showMC && mc ? areaMC(mc) : areaMC(pts.map(p => ({ t: p.t, p10: 0, p90: 0 })))).attr("opacity", showMC && mc && !comp ? 1 : 0);
+  P(null, "bal-area").attr("fill", "url(#balGrad)").transition(tr).attr("d", areaBal(pts)).attr("opacity", comp ? 0 : 1);
+  P(null, "cum-area").attr("fill", "rgba(233,161,59,.45)").transition(tr).attr("d", areaCum(pts)).attr("opacity", comp ? 1 : 0);
+  P(null, "growth-area").attr("fill", "rgba(14,122,95,.45)").transition(tr).attr("d", areaGrowth(pts)).attr("opacity", comp ? 1 : 0);
+  P(null, "mc-median").attr("fill", "none").attr("stroke", "#17211b").attr("stroke-width", 1.5).attr("stroke-dasharray", "6 4").transition(tr).attr("d", showMC && mc ? lineBal(mc.map(d => ({ t: d.t, bal: d.p50 }))) : lineBal(pts.map(p => ({ t: p.t, bal: 0 })))).attr("opacity", showMC && mc && !comp ? 1 : 0);
+  P(null, "cum-line").attr("fill", "none").attr("stroke", "#e9a13b").attr("stroke-width", 2).attr("stroke-dasharray", comp ? "none" : "5 4").transition(tr).attr("d", lineBal(pts.map(p => ({ t: p.t, bal: p.cum })))).attr("opacity", showCum || comp ? 1 : 0);
+  P(null, "bal-line").attr("fill", "none").attr("stroke", "#0e7a5f").attr("stroke-width", 2.5).transition(tr).attr("d", lineBal(pts));
+  P(null, "spend-line").attr("fill", "none").attr("stroke", "#c4553b").attr("stroke-width", 2.5).transition(tr).attr("d", lineBal(pts.filter(p => p.t >= chartData.yrs)));
+  // Retirement marker
+  const mk = g.selectAll("g.retire-mark").data([null]).join("g").attr("class", "retire-mark");
+  mk.selectAll("line").data([null]).join("line").transition(tr).attr("x1", x(chartData.yrs)).attr("x2", x(chartData.yrs)).attr("y1", m.t).attr("y2", m.t + ih).attr("stroke", "#c4553b").attr("stroke-dasharray", "4 4");
+  mk.selectAll("text").data([null]).join("text").attr("class", "retire-label").transition(tr).attr("x", Math.min(x(chartData.yrs) + 6, W - 92)).attr("y", m.t + ih - 8).text(`Retire ${chartData.retireYear}`);
+  // Crosshair + hover overlay
+  const ch = g.selectAll("g.cross").data([null]).join("g").attr("class", "cross").attr("opacity", 0);
+  ch.selectAll("line").data([null]).join("line").attr("y1", m.t).attr("y2", m.t + ih).attr("stroke", "#17211b").attr("stroke-opacity", .35);
+  ch.selectAll("circle").data([null]).join("circle").attr("r", 5).attr("fill", "#0e7a5f").attr("stroke", "#fff").attr("stroke-width", 2);
+  const tip = $("tooltip");
+  g.selectAll("rect.overlay").data([null]).join("rect").attr("class", "overlay").attr("x", m.l).attr("y", m.t).attr("width", iw).attr("height", ih).attr("fill", "transparent")
+    .on("mousemove", function(event){
+      const [px] = d3.pointer(event), t = x.invert(px);
+      let bi = 0, bd = 1e9; pts.forEach((p, i) => { const d = Math.abs(p.t - t); if (d < bd){ bd = d; bi = i; } });
+      const p = pts[bi], phase = p.t < chartData.contribT ? "Saving" : p.t < chartData.yrs ? "Coasting" : "Spending";
+      ch.attr("opacity", 1); ch.select("line").attr("x1", x(p.t)).attr("x2", x(p.t)); ch.select("circle").attr("cx", x(p.t)).attr("cy", y(Math.max(0, p.bal)));
+      tip.hidden = false;
+      tip.textContent = `${nowYear + Math.floor(p.t)} · ${phase}\nBalance: ${fmt.format(p.bal)}\nContributed: ${fmt.format(p.cum)}\nBalance vs contributed: ${fmt.format(p.growth)}` + (showMC && mc && mc[bi] ? `\nSimulated median: ${fmt.format(mc[bi].p50)}\nSimulated 10–90%: ${fmt.format(mc[bi].p10)} – ${fmt.format(mc[bi].p90)}` : "");
+      const rect = wrap.getBoundingClientRect();
+      tip.style.left = Math.min(x(p.t) + 14, Math.max(0, rect.width - 180)) + "px"; tip.style.top = "12px";
+    })
+    .on("mouseleave", () => { ch.attr("opacity", 0); tip.hidden = true; });
 }
-$("chart").addEventListener("mousemove", e => {
-  const cv = e.currentTarget, tip = $("tooltip"); if (!cv._pts) return;
-  const rect = cv.getBoundingClientRect(), x = e.clientX - rect.left;
-  const {X} = cv._geom;
-  let best = cv._pts[0], bd = 1e9, bi = 0;
-  cv._pts.forEach((p,i) => { const d = Math.abs(X(p.t)-x); if (d<bd){bd=d;best=p;bi=i;} });
-  tip.hidden = false;
-  tip.textContent = `${nowYear + Math.floor(best.t)}\nBalance: ${fmt.format(best.bal)}\nContributed: ${fmt.format(best.cum)}` + (cv._mc && cv._mc[bi] ? `\nSimulated median: ${fmt.format(cv._mc[bi].p50)}\nSimulated 10–90%: ${fmt.format(cv._mc[bi].p10)} – ${fmt.format(cv._mc[bi].p90)}` : "");
-  tip.style.left = Math.min(x+14, rect.width-170)+"px"; tip.style.top = "12px";
-});
-$("chart").addEventListener("mouseleave", () => $("tooltip").hidden = true);
+
+/** Monte Carlo histogram: sustainable spend per simulated path, headline + 85%-success markers. */
+function drawMcChart(MC, R, animate = true){
+  if (!window.d3) return;
+  if (MC && R) lastMcVis = { MC, R }; if (!MC) lastMcVis = null;
+  const svgEl = $("mcChart"), wrapEl = svgEl.parentElement, W = wrapEl.clientWidth || 600, H = 190;
+  const svg = d3.select(svgEl).attr("width", W).attr("height", H);
+  if (!MC || !MC.sMax){ svg.selectAll("*").remove(); svg.append("text").attr("x", 8).attr("y", 24).attr("class", "mc-wait").text("Calculating 1,000 simulated paths…"); return; }
+  const vals = MC.sMax.map(v => Number.isFinite(v) ? Math.max(0, v) : 0);
+  const cap = Math.max(d3.quantile(vals.slice().sort(d3.ascending), .99) || 1, R.totalSpendToday, MC.spend85, 1);
+  const m = { l: 34, r: 12, t: 20, b: 26 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const x = d3.scaleLinear().domain([0, cap]).range([m.l, m.l + iw]);
+  const bins = d3.bin().domain(x.domain()).thresholds(36)(vals.map(v => Math.min(v, cap)));
+  const y = d3.scaleLinear().domain([0, d3.max(bins, d => d.length) || 1]).range([m.t + ih, m.t]).nice();
+  const tr = animate ? d3.transition().duration(500).ease(d3.easeCubicOut) : d3.transition().duration(0);
+  svg.selectAll("text.mc-wait").remove();
+  svg.selectAll("g.axis-y").data([null]).join("g").attr("class", "axis-y grid").attr("transform", `translate(${m.l},0)`).transition(tr).call(d3.axisLeft(y).ticks(3).tickSize(-iw));
+  svg.selectAll("g.axis-x").data([null]).join("g").attr("class", "axis-x").attr("transform", `translate(0,${m.t + ih})`).transition(tr).call(d3.axisBottom(x).ticks(6).tickFormat(compact));
+  const tip = $("mcTooltip");
+  svg.selectAll("rect.bin").data(bins).join("rect").attr("class", "bin")
+    .attr("x", d => x(d.x0) + 1).attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 1))
+    .attr("fill", d => d.x1 <= R.totalSpendToday ? "rgba(196,85,59,.65)" : "rgba(14,122,95,.75)")
+    .on("mousemove", function(event, d){ tip.hidden = false; tip.textContent = `${compact(d.x0)}–${compact(d.x1)}/mo\n${d.length} paths (${(d.length/vals.length*100).toFixed(1)}%)`; const r = wrapEl.getBoundingClientRect(); tip.style.left = Math.min(event.clientX - r.left + 12, r.width - 150) + "px"; tip.style.top = "8px"; })
+    .on("mouseleave", () => { tip.hidden = true; })
+    .transition(tr).attr("y", d => y(d.length)).attr("height", d => y(0) - y(d.length));
+  const marker = (cls, val, label, dash, anchor) => {
+    const g = svg.selectAll("g." + cls).data(val <= cap ? [val] : []).join("g").attr("class", cls);
+    g.selectAll("line").data([null]).join("line").transition(tr).attr("x1", x(val)).attr("x2", x(val)).attr("y1", m.t).attr("y2", m.t + ih).attr("stroke", "#17211b").attr("stroke-width", 1.5).attr("stroke-dasharray", dash);
+    g.selectAll("text").data([null]).join("text").attr("class", "mc-mark-label").attr("text-anchor", anchor).transition(tr).attr("x", x(val) + (anchor === "end" ? -5 : 5)).attr("y", m.t + 4).text(label);
+  };
+  marker("mark-head", R.totalSpendToday, `Headline ${compact(R.totalSpendToday)}`, "none", R.totalSpendToday > cap * .7 ? "end" : "start");
+  marker("mark-85", MC.spend85, `85% ${compact(MC.spend85)}`, "5 4", MC.spend85 > cap * .7 ? "end" : "start");
+}
 $("basisToday").onclick = () => { basis="today"; $("basisToday").classList.add("active"); $("basisNominal").classList.remove("active"); drawChart(); };
 $("basisNominal").onclick = () => { basis="nominal"; $("basisNominal").classList.add("active"); $("basisToday").classList.remove("active"); drawChart(); };
+$("viewBalance").onclick = () => { chartView="balance"; $("viewBalance").classList.add("active"); $("viewComposition").classList.remove("active"); $("legendGrowth").hidden = true; drawChart(); };
+$("viewComposition").onclick = () => { chartView="composition"; $("viewComposition").classList.add("active"); $("viewBalance").classList.remove("active"); $("legendGrowth").hidden = false; drawChart(); };
+document.querySelectorAll(".lg[data-series='cum'], .lg[data-series='mc']").forEach(el => el.addEventListener("click", () => {
+  if (el.dataset.series === "cum") showCum = !showCum; else showMC = !showMC;
+  document.querySelectorAll(`.lg[data-series='${el.dataset.series}']`).forEach(n => n.classList.toggle("off", el.dataset.series === "cum" ? !showCum : !showMC));
+  drawChart(false);
+}));
 
 function save(v){ if (sharedView) return; try{ localStorage.setItem("retireplan-v1", JSON.stringify(v)); }catch{} }
 /** A plan opened from a share link is a view, not the saved plan: it must not reach
@@ -509,6 +592,6 @@ document.querySelectorAll("[data-preset]").forEach(b => b.onclick = () => {
 });
 for (const f of MONEY_FIELDS) $(f).addEventListener("input", e => formatMoneyInput(e.target));
 $("form").addEventListener("input", e => { adoptShared(); if (["currentSavings","monthlyContribution","desiredSpend"].includes(e.target.id)) stickySolve = false; render(); });
-addEventListener("resize", drawChart);
+addEventListener("resize", () => { drawChart(false); if (lastMcVis) drawMcChart(lastMcVis.MC, lastMcVis.R, false); });
 $("retireYear").max = nowYear + 60;
 load(); render();

@@ -132,9 +132,9 @@
     <div class="card scenarios">
       <h2>What if returns differ?</h2>
       <div class="scen-grid">
-        <div><span>Returns −2%/yr</span><strong id="scenLow">—</strong><small>/mo today-$</small></div>
-        <div class="base"><span>Your assumptions</span><strong id="scenBase">—</strong><small>/mo today-$</small></div>
-        <div><span>Returns +2%/yr</span><strong id="scenHigh">—</strong><small>/mo today-$</small></div>
+        <div><span>Returns −2%/yr</span><strong id="scenLow">—</strong><small>/mo today-$</small><div class="bar"><i id="scenLowBar"></i></div></div>
+        <div class="base"><span>Your assumptions</span><strong id="scenBase">—</strong><small>/mo today-$</small><div class="bar"><i id="scenBaseBar"></i></div></div>
+        <div><span>Returns +2%/yr</span><strong id="scenHigh">—</strong><small>/mo today-$</small><div class="bar"><i id="scenHighBar"></i></div></div>
       </div>
       <p class="fineprint">Both growth rates shifted together; inflation unchanged. A plan that only works at +2% is fragile.</p>
     </div>
@@ -146,6 +146,7 @@
         <div><span>Median pot left at the end</span><strong id="mcMedianEnd">—</strong><small id="mcMedianEndNote">in today's $</small></div>
       </div>
       <p class="mc-note" id="mcDesiredOut" hidden></p>
+      <div class="mc-chart-wrap"><svg id="mcChart" role="img" aria-label="Histogram of sustainable monthly spending across 1,000 simulated Monte Carlo paths"></svg><div id="mcTooltip" class="tooltip" hidden></div><p class="mc-chart-cap" id="mcChartCap">Distribution of the monthly spending each simulated path could sustain — bars left of the headline line are paths where it runs short.</p></div>
       <p class="fineprint">1,000 simulated market paths: monthly returns are drawn at random with the volatility (σ) you set, calibrated so the <em>median</em> path compounds at exactly your growth rates — the deterministic answer above is the middle path, not a promise. “Success” means the pot funds the spending for the full retirement (and keeps any end cushion). Random draws have no memory and no fat tails, so treat the odds as a stress lens, not a guarantee.</p>
     </div>
 
@@ -159,17 +160,23 @@
 
     <div class="card chart-card">
       <div class="chart-head"><h2>Balance over time</h2>
-        <div class="toggle" role="group" aria-label="Dollars basis">
-          <button type="button" id="basisToday" class="active">Today's $</button><button type="button" id="basisNominal">Future $</button>
+        <div class="chart-toggles">
+          <div class="toggle" role="group" aria-label="Chart view">
+            <button type="button" id="viewBalance" class="active">Balance</button><button type="button" id="viewComposition">What built it</button>
+          </div>
+          <div class="toggle" role="group" aria-label="Dollars basis">
+            <button type="button" id="basisToday" class="active">Today's $</button><button type="button" id="basisNominal">Future $</button>
+          </div>
         </div>
       </div>
-      <div class="chart-wrap"><canvas id="chart" role="img" aria-label="Line chart of portfolio balance from today through retirement spending"></canvas><div id="tooltip" class="tooltip" hidden></div></div>
-      <div class="legend"><span><i class="sw accum"></i>Saving / coasting</span><span><i class="sw draw"></i>Spending</span><span><i class="sw contrib"></i>Contributed (cumulative)</span><span><i class="sw mcband"></i>Monte Carlo 10th–90th pct</span><span><i class="sw mcmed"></i>Monte Carlo median</span></div>
+      <div class="chart-wrap"><div id="chart"></div><div id="tooltip" class="tooltip" hidden></div></div>
+      <div class="legend"><span class="lg" data-series="bal"><i class="sw accum"></i>Saving / coasting</span><span class="lg" data-series="bal"><i class="sw draw"></i>Spending</span><span class="lg" data-series="cum" title="Click to show/hide"><i class="sw contrib"></i>Contributed (cumulative) ⤢</span><span id="legendGrowth" hidden><i class="sw growth"></i>Growth on top of contributions</span><span class="lg" data-series="mc" title="Click to show/hide"><i class="sw mcband"></i>Monte Carlo 10th–90th pct ⤢</span><span class="lg" data-series="mc"><i class="sw mcmed"></i>Monte Carlo median</span></div>
     </div>
 
   </section>
 </main>
 <footer>Runs 100% client-side · Your inputs persist only in this browser (localStorage) and in share links you create.</footer>
+<script src="d3.min.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

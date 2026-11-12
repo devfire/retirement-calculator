@@ -1,7 +1,8 @@
 # RetirePlan — phased-contribution retirement calculator
 
-A 100% client-side web app: no build step, no dependencies, no network calls,
-no accounts. It answers one question:
+A 100% client-side web app: no build step, no network calls, no accounts.
+Its only dependency, D3.js, is vendored locally (`d3.min.js`) so `file://`
+and offline use keep working. It answers one question:
 
 > **How much can I spend per month in retirement — in today's dollars?**
 
@@ -73,8 +74,12 @@ them individually afterwards.
 - **Pot at retirement** in future dollars and today's dollars, what you put
   in, what growth added, and the **inflation bite** (purchasing power lost
   while waiting to retire).
-- **Balance-over-time chart** (hover for values) with a today-$ / future-$
-  toggle.
+- **Balance-over-time chart** (D3, animated as you type) with Saving /
+  Coasting / Spending phase bands, a crosshair hover (balance, contributed,
+  balance-vs-contributed, Monte Carlo median/band), a today-$ / future-$
+  toggle, clickable legend entries, and a **Balance / What built it** view
+  that stacks contributions vs. growth up to the balance line.
+- **Sensitivity bars** under the ±2% scenarios, scaled to the largest.
 - **Monte Carlo card** — 1,000 simulated market paths with randomly varying
   monthly returns: the chance the headline spending lasts the full
   retirement, the spending that would have lasted in 85% of paths, the
@@ -84,7 +89,11 @@ them individually afterwards.
   defaults the headline $5,620/mo (no contributions) lasts in ~47% of
   paths: the deterministic answer is calibrated to be the *median* path,
   so treat it as a coin-flip plan and the 85%-success spending
-  (~$3,200/mo) as the cautious one.
+  (~$3,200/mo) as the cautious one. A **histogram** under the card shows the
+  full distribution of sustainable spending across the 1,000 paths — red bars
+  are paths where the headline spending runs short — with headline and
+  85%-success markers (hover for path counts). The headline number itself
+  animates to its new value when inputs change.
 
 ### Desired-spending check, gap solver & back-fill
 
@@ -189,8 +198,8 @@ income amount itself is unchanged.
 | File | Purpose |
 |---|---|
 | `index.html` | Markup and form |
-| `style.css` | Layout, responsive + print styles |
-| `app.js` | Simulation, solver, chart, persistence (vanilla JS, no dependencies) |
+| `app.js` | Simulation, solver, D3 charts, persistence |
+| `d3.min.js` | Vendored D3 v7.9.0 (MIT, © Mike Bostock) — loaded locally, no CDN |
 | `README.md` | This file |
 
 ## Limitations
