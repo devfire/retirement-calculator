@@ -48,7 +48,7 @@ inflation, retirement in 10 years):
 | Current savings | What you have invested today |
 | Target retirement year | When withdrawals start; contributions may end long before |
 | Monthly contribution | Amount added at the start of each month |
-| Contribution window | **The unique bit.** A dual-ended slider on a today→retirement scale: drag either end (or type the years) to set when contributions start and when they stop. Contributions run from the start year up to the end year; the pot coasts before and after. Set start = today and end = retirement year to contribute all the way; collapse both ends to one year for no contributions |
+| Contribution window | A dual-ended slider on a today→retirement scale: drag either end (or type the years) to set when contributions start and when they stop. Contributions run from the start year up to the end year; the pot coasts before and after. Set start = today and end = retirement year to contribute all the way; collapse both ends to one year for no contributions |
 | Contribution increase / year | Optional annual escalation of the contribution, starting from the first year of the contribution window |
 | Investment growth before retirement | Expected nominal return while accumulating |
 | Growth in retirement | Usually lower (more bonds/cash); drives the drawdown |
