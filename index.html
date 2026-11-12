@@ -88,8 +88,11 @@
         <label class="field"><span>Years spent in retirement</span>
           <div class="slider-row"><input id="retireYears" type="range" min="5" max="50" step="1" value="30"><output id="retireYearsOut">30 yrs</output></div>
         </label>
+        <label class="field"><span>Monte Carlo success target <em>(for “Spending at …% success”)</em></span>
+          <div class="pct"><input id="mcSuccessTarget" type="number" step="1" min="1" max="99" value="85"><i>%</i></div>
+          <small class="hint">The Monte Carlo card reports the monthly spending that would have lasted in this share of simulated paths. Higher = more cautious.</small>
+        </label>
       </fieldset>
-
       <fieldset class="wide">
         <legend>In retirement <em>(optional)</em></legend>
         <div class="field-row">
@@ -150,7 +153,7 @@
       <h2>Monte Carlo — what if returns vary year by year?</h2>
       <div class="scen-grid">
         <div><span id="mcSuccessLabel">Chance the headline spending lasts</span><strong id="mcSuccess">—</strong><small id="mcSuccessNote">of 1,000 simulated paths</small></div>
-        <div><span>Spending at 85% success</span><strong id="mcSpend85">—</strong><small>/mo in today's $</small></div>
+        <div><span id="mcSpendLabel">Spending at 85% success</span><strong id="mcSpendTarget">—</strong><small>/mo in today's $</small></div>
         <div><span>Median pot left at the end</span><strong id="mcMedianEnd">—</strong><small id="mcMedianEndNote">in today's $</small></div>
       </div>
       <p class="mc-note" id="mcDesiredOut" hidden></p>

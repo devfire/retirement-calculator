@@ -1,6 +1,6 @@
 "use strict";
 const $ = id => document.getElementById(id);
-const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribStartYear","contribEndYear","contribGrowth","returnBefore","returnAfter","volBefore","volAfter","inflation","retireYears","otherIncome","otherIncomeStartYear","desiredEndAmount","desiredSpend"];
+const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribStartYear","contribEndYear","contribGrowth","returnBefore","returnAfter","volBefore","volAfter","inflation","retireYears","mcSuccessTarget","otherIncome","otherIncomeStartYear","desiredEndAmount","desiredSpend"];
 const MONEY_FIELDS = ["currentSavings","monthlyContribution","otherIncome","desiredEndAmount","desiredSpend"];
 const nowYear = new Date().getFullYear();
 const fmt = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
@@ -56,9 +56,10 @@ function compute(raw){
     contribGrowth: clamp(num(raw.contribGrowth), -20, 50),
     returnBefore: clamp(num(raw.returnBefore), -50, 30), returnAfter: clamp(num(raw.returnAfter), -50, 30),
     volBefore: clamp(num(raw.volBefore), 0, 40), volAfter: clamp(num(raw.volAfter), 0, 40),
+    mcSuccessTarget: Math.round(clamp(num(raw.mcSuccessTarget, 85), 1, 99)),
     inflation: clamp(num(raw.inflation), -10, 30) };
-  const clamped = ["returnBefore","returnAfter","inflation","contribGrowth","volBefore","volAfter"].some(k => v[k] !== num(raw[k]));
-  const warns = clamped ? ["Some assumptions were outside sane ranges and were clamped (−50%…30% returns, −10%…30% inflation, 0…40% volatility)."] : [];
+  const clamped = ["returnBefore","returnAfter","inflation","contribGrowth","volBefore","volAfter","mcSuccessTarget"].some(k => v[k] !== num(raw[k]));
+  const warns = clamped ? ["Some assumptions were outside sane ranges and were clamped (−50%…30% returns, −10%…30% inflation, 0…40% volatility, 1…99% Monte Carlo success target)."] : [];
   if (v.retireYear !== retireYearIn) warns.push(`Retirement year is more than 60 years away — clamped to ${nowYear + 60}.`);
   const retireYearEff = Math.max(v.retireYear, nowYear);
   const yearsToRetire = retireYearEff - nowYear;
@@ -237,7 +238,7 @@ function monteCarlo(R){
   const deflate = yrs => Math.pow(1 + inflAnnual, yrs);
   return { trials: MC_TRIALS, success: successAt(spend), sMax: Array.from(sorted),
            successDesired: Number.isFinite(v.desiredSpend) ? successAt(Math.max(0, v.desiredSpend)) : null,
-           spend85: Math.max(0, quantile(sorted, .15)),
+           spendAtTarget: Math.max(0, quantile(sorted, 1 - v.mcSuccessTarget/100)), successTarget: v.mcSuccessTarget,
            medianEndToday: bandPts[bandPts.length-1].p50 / deflate(R.yrs + (v.retireYears||0)),
            p10EndToday: bandPts[bandPts.length-1].p10 / deflate(R.yrs + (v.retireYears||0)), bands: bandPts };
 }
@@ -292,7 +293,8 @@ function applyMonteCarlo(MC, R, v){
     $("mcSuccessLabel").textContent = "Chance the headline spending lasts";
     $("mcSuccess").textContent = "—";
     $("mcSuccessNote").textContent = "of 1,000 simulated paths";
-    $("mcSpend85").textContent = "—";
+    $("mcSpendLabel").textContent = `Spending at ${R.san.mcSuccessTarget}% success`;
+    $("mcSpendTarget").textContent = "—";
     $("mcMedianEnd").textContent = "—";
     $("mcMedianEndNote").textContent = "in today's $";
     $("mcDesiredOut").hidden = true;
@@ -303,13 +305,14 @@ function applyMonteCarlo(MC, R, v){
   $("mcSuccessLabel").textContent = `Chance ${fmt.format(testSpend)}/mo lasts ${v.retireYears} yrs`;
   $("mcSuccess").textContent = Math.round((hasDesired ? MC.successDesired : MC.success) * 100) + "%";
   $("mcSuccessNote").textContent = `of ${MC.trials.toLocaleString()} simulated paths`;
-  $("mcSpend85").textContent = fmt.format(MC.spend85);
+  $("mcSpendLabel").textContent = `Spending at ${MC.successTarget}% success`;
+  $("mcSpendTarget").textContent = fmt.format(MC.spendAtTarget);
   $("mcMedianEnd").textContent = fmt.format(MC.medianEndToday);
   $("mcMedianEndNote").textContent = `in today's $ · headline spend is solved to end near $0 · 10th pct leaves ${fmt.format(MC.p10EndToday)}`;
   const dMC = $("mcDesiredOut");
   if (hasDesired){
     dMC.hidden = false;
-    dMC.textContent = `For comparison, the headline ${fmt.format(R.totalSpendToday)}/mo lasted in ${Math.round(MC.success * 100)}% of simulated paths. Spending ${fmt.format(MC.spend85)}/mo would have lasted in 85%.`;
+    dMC.textContent = `For comparison, the headline ${fmt.format(R.totalSpendToday)}/mo lasted in ${Math.round(MC.success * 100)}% of simulated paths. Spending ${fmt.format(MC.spendAtTarget)}/mo would have lasted in ${MC.successTarget}%.`;
   } else dMC.hidden = true;
   drawMcChart(MC, R, true);
 }
@@ -317,7 +320,8 @@ function showMonteCarloPending(R, v){
   $("mcSuccessLabel").textContent = `Chance ${fmt.format(mcTestSpend(R))}/mo lasts ${v.retireYears} yrs`;
   $("mcSuccess").textContent = "…";
   $("mcSuccessNote").textContent = "calculating…";
-  $("mcSpend85").textContent = "…";
+  $("mcSpendLabel").textContent = `Spending at ${R.san.mcSuccessTarget}% success`;
+  $("mcSpendTarget").textContent = "…";
   $("mcMedianEnd").textContent = "…";
   $("mcMedianEndNote").textContent = "calculating 1,000 simulated paths…";
   $("mcDesiredOut").hidden = true;
@@ -547,7 +551,7 @@ function drawChart(animate = true){
     .on("mouseleave", () => { ch.attr("opacity", 0); tip.hidden = true; });
 }
 
-/** Monte Carlo histogram: sustainable spend per simulated path, headline + 85%-success markers. */
+/** Monte Carlo histogram: sustainable spend per simulated path, headline + success-target markers. */
 function drawMcChart(MC, R, animate = true){
   if (!window.d3) return;
   if (MC && R) lastMcVis = { MC, R }; if (!MC) lastMcVis = null;
@@ -557,7 +561,7 @@ function drawMcChart(MC, R, animate = true){
   const vals = MC.sMax.map(v => Number.isFinite(v) ? Math.max(0, v) : 0);
   const desiredSpend = Number.isFinite(R.san.desiredSpend) ? Math.max(0, R.san.desiredSpend) : null;
   const testSpend = desiredSpend ?? R.totalSpendToday;
-  const cap = Math.max(d3.quantile(vals.slice().sort(d3.ascending), .99) || 1, R.totalSpendToday, testSpend, MC.spend85, 1);
+  const cap = Math.max(d3.quantile(vals.slice().sort(d3.ascending), .99) || 1, R.totalSpendToday, testSpend, MC.spendAtTarget, 1);
   const m = { l: 34, r: 12, t: 20, b: 26 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
   const x = d3.scaleLinear().domain([0, cap]).range([m.l, m.l + iw]);
   const bins = d3.bin().domain(x.domain()).thresholds(36)(vals.map(v => Math.min(v, cap)));
@@ -582,7 +586,7 @@ function drawMcChart(MC, R, animate = true){
   if (desiredSpend !== null && Math.abs(desiredSpend - R.totalSpendToday) > 1)
     marker("mark-desired", desiredSpend, `Desired ${compact(desiredSpend)}`, "2 3", desiredSpend > cap * .7 ? "end" : "start", 17);
   else svg.selectAll("g.mark-desired").remove();
-  marker("mark-85", MC.spend85, `85% ${compact(MC.spend85)}`, "5 4", MC.spend85 > cap * .7 ? "end" : "start");
+  marker("mark-target", MC.spendAtTarget, `${MC.successTarget}% ${compact(MC.spendAtTarget)}`, "5 4", MC.spendAtTarget > cap * .7 ? "end" : "start");
   $("mcChartCap").textContent = desiredSpend !== null
     ? "Distribution of the monthly spending each simulated path could sustain — bars left of the desired line are paths where your desired spending runs short."
     : "Distribution of the monthly spending each simulated path could sustain — bars left of the headline line are paths where it runs short.";
@@ -632,7 +636,7 @@ $("shareBtn").onclick = async () => {
   catch{ prompt("Copy your share link:", url); }
   setTimeout(() => $("shareBtn").textContent = "🔗 Copy share link", 1800);
 };
-$("resetBtn").onclick = () => { stickySolve = false; backfillMode = "monthly"; adoptShared(); localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribStartYear:nowYear, contribEndYear:nowYear+5, contribGrowth:0, returnBefore:7, returnAfter:4.5, volBefore:14, volAfter:9, inflation:2.5, retireYears:30, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
+$("resetBtn").onclick = () => { stickySolve = false; backfillMode = "monthly"; adoptShared(); localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribStartYear:nowYear, contribEndYear:nowYear+5, contribGrowth:0, returnBefore:7, returnAfter:4.5, volBefore:14, volAfter:9, inflation:2.5, retireYears:30, mcSuccessTarget:85, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
 $("backfillBtn").onclick = () => { if (!lastBackfill) return; adoptShared(); stickySolve = true; apply(lastBackfill); render(); };
 $("backfillMonthly").onclick = () => { backfillMode = "monthly"; stickySolve = false; render(); };
 $("backfillSavings").onclick = () => { backfillMode = "savings"; stickySolve = false; render(); };

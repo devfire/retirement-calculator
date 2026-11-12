@@ -83,7 +83,7 @@ them individually afterwards.
   that stacks contributions vs. growth up to the balance line.
 - **Monte Carlo card** — 1,000 simulated market paths with randomly varying
   monthly returns: the chance the headline spending lasts the full
-  retirement, the spending that would have lasted in 85% of paths, and the
+  retirement, the spending that would have lasted in a target share of paths (85% by default, adjustable in **Assumptions → Monte Carlo success target**), and the
   median pot left. If you entered "Spending you'd like", the lead chance
   instead tests that desired spending (the headline's chance is shown for
   comparison), so the big percentage always answers the amount you asked
@@ -91,12 +91,12 @@ them individually afterwards.
   percentile band and a simulated-median line (hover for values). With the
   defaults the headline $5,620/mo (no contributions) lasts in ~47% of
   paths: the deterministic answer is calibrated to be the *median* path,
-  so treat it as a coin-flip plan and the 85%-success spending
-  (~$3,200/mo) as the cautious one. A **histogram** under the card shows the
+  so treat it as a coin-flip plan and the success-target spending
+  (~$3,200/mo at the default 85%) as the cautious one. A **histogram** under the card shows the
   full distribution of sustainable spending across the 1,000 paths — red bars
   are paths where the tested spending (your desired spending when entered,
   else the headline) runs short — with headline, desired (when entered), and
-  85%-success markers (hover for path counts). The headline number itself
+  success-target markers (hover for path counts). The headline number itself
   animates to its new value when inputs change.
 
 ### Desired-spending check, gap solver & back-fill
@@ -175,8 +175,8 @@ income amount itself is unchanged.
   Because the balance is affine in the level spend, each path's exact
   maximum sustainable spend (never overdrawing, end cushion preserved,
   other-income bridge and $0 withdrawal floor handled) is computed
-  analytically; success rates and the 85%-success spending are read off
-  that distribution. Inflation, contributions, and other income stay at
+  analytically; success rates and the spending at the success target (an
+  Assumptions input, default 85%) are read off that distribution. Inflation, contributions, and other income stay at
   their entered values — only returns vary.
 - Everything is reported in **today's dollars** unless labelled "future $":
   future amounts are divided by $(1+\text{inflation})^{\text{years}}$.
