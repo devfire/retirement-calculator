@@ -36,7 +36,7 @@ node --test test/core.test.js
 | **Coasting** | Next **5 years**, retire in 10 | No contributions — compounding only |
 | **Spending** | 30 years in retirement | Level, inflation-indexed withdrawals until the pot reaches ~$0 |
 
-With those defaults (7% growth before retirement, 4.5% in retirement, 2.5%
+With that example (7% growth before retirement, 4.5% in retirement, 2.5%
 inflation, retirement in 10 years — e.g. 110 months from Nov 2026 to Jan 2036, with 50 contribution months from Nov 2026 to Jan 2031):
 
 | Result | Value |
@@ -47,6 +47,8 @@ inflation, retirement in 10 years — e.g. 110 months from Nov 2026 to Jan 2036,
 | **Sustainable spending** | **$6,370/mo ($76,446/yr) in today's dollars** |
 | First retirement year actually pays | $7,989/mo (future $ — inflation has eroded the dollar) |
 | Implied withdrawal rate | 4.4% of the pot at retirement |
+
+That worked example is not the load defaults. Opening or Resetting the calculator loads **$1M now + $0/mo** with the same growth/inflation/horizon (7% before, 4.5% after, 2.5% inflation, retire in 10 years), which gives pot **$1,859,308 future $ = $1,482,686 in today's $**, $1,000,000 put in, $859,308 growth, and **$5,423/mo ($65,073/yr) in today's dollars** — the headline quoted in the Monte Carlo section below.
 
 ## Inputs
 
@@ -64,10 +66,10 @@ inflation, retirement in 10 years — e.g. 110 months from Nov 2026 to Jan 2036,
 | Volatility before retirement / in retirement | Monte Carlo only: how much annual returns swing around the growth rates above (σ). Defaults come from the growth presets (e.g. Growth: 14% / 9%) |
 | Down-year rule: cut after a down year | Optional Monte Carlo strategy. When enabled, spending is cut by the chosen % (default 10%, clamped 0–50%) for the 12 months after any year with a negative market return, then restored after an up year |
 | Risk-based guardrails (re-solve yearly) | Optional Monte Carlo strategy. At each retirement anniversary, sustainable spending is re-solved from the actual pot over the years left, targeting the success-target spend (default 85%). Raises go fully to the re-solved level; cuts close a chosen % of the gap per year (default 10%); changes under a chosen threshold (default 5%) are ignored |
-| Other income at retirement | Pension / Social Security, in today's $/mo, assumed inflation-indexed (see note below) |
+| Other income | Pension / Social Security, in today's $/mo, assumed inflation-indexed (see note below) |
 | Other income starts in year | Optional. When that pension / Social Security actually begins — for Social Security, birth year + claiming age (e.g. 1970 + 67 = 2037). Blank = at retirement. Until it starts, the portfolio funds *all* spending (the bridge); afterwards it only tops income up to the spending level |
-| Spending you'd like | Optional check: "how long would $X/mo actually last?" plus a gap solver (below) |
-| Desired amount to be left at the end | Optional cushion in today's $ left after the final retirement year (default $0). Sustainable spending, the desired-spending gap solver/back-fill, and longevity are solved to preserve it; the chart/table then end at its inflated future-$ value |
+| Target spending | Optional check: "how long would $X/mo actually last?" plus a gap solver (below) |
+| End cushion | Optional cushion in today's $ left after the final retirement year (default $0). Sustainable spending, the desired-spending gap solver/back-fill, and longevity are solved to preserve it; the chart/table then end at its inflated future-$ value |
 
 Growth presets (Conservative 3% / Balanced 5% / Growth 7% / Optimistic 9%) set
 both return fields and both volatility fields at once; you can still edit
@@ -97,7 +99,7 @@ them individually afterwards.
 - **Monte Carlo card** — 1,000 simulated market paths with randomly varying
   monthly returns: the chance the headline spending lasts the full
   retirement, the spending that would have lasted in a target share of paths (85% by default, adjustable in **Assumptions → Monte Carlo success target**), and the
-  median pot left. If you entered "Spending you'd like", the lead chance
+  median pot left. If you entered "Target spending", the lead chance
   instead tests that desired spending (the headline's chance is shown for
   comparison), so the big percentage always answers the amount you asked
   about. The balance chart gains a 10th–90th
@@ -122,7 +124,7 @@ them individually afterwards.
   same paths are replayed with spending re-solved every anniversary: the
   chance the tested spending lasts vs. without, the *average* monthly
   spending actually paid over retirement (raises included), and the *lowest*
-  monthly spending on the median path (10th-percentile dip also shown) — how
+  monthly spending — the median across paths of each path's lowest month (10th-percentile dip also shown) — how
   deep the cuts get. Starting below the re-solved level, this strategy raises
   spending, so its success at a conservative tested spend can *fall* while
   average spending rises: that trade is the point (it defends against
@@ -137,7 +139,7 @@ them individually afterwards.
 
 ### Desired-spending check, gap solver & back-fill
 
-Enter "Spending you'd like" and the app reports how many years that level
+Enter "Target spending" and the app reports how many years that level
 actually lasts. If it falls short, it also computes:
 
 - the pot (today-$) that spending level would require, and the shortfall;
@@ -148,9 +150,9 @@ actually lasts. If it falls short, it also computes:
 under the field whenever a portfolio-funded desired spend is entered, with a
 toggle — **Monthly contributions** / **Current savings** — choosing which
 input absorbs the whole difference, and a hint previewing the exact new
-value. Pressing **← Back-fill to fund this spending** writes it into that
+value. Pressing **Back-fill to fund this spending** writes it into that
 field; every result, the chart, and persistence then update as if you'd
-typed it. It works in **both directions**: raise “Spending you'd like” and
+typed it. It works in **both directions**: raise “Target spending” and
 it tops the input up, lower it and it trims the input back down (floored at
 $0), so you can iterate on the target freely — the button never disables or
 changes label. Values are rounded up to the nearest $10 so rounding can't
@@ -163,7 +165,7 @@ Pressing Back-fill also **locks the solve**: afterwards, changing any
 assumption (growth presets, returns, inflation, retirement length, cushion,
 …) immediately re-solves the same input so the desired spending stays
 funded — the hint shows a 🔒 note while locked. Manually editing current
-savings, monthly contributions, or “Spending you'd like” unlocks it; press
+savings, monthly contributions, or “Target spending” unlocks it; press
 Back-fill again to re-solve (e.g. for a new target, which is never
 auto-applied while typing, since partial values like `9`, `90`, `900`
 would thrash the inputs).
@@ -206,7 +208,7 @@ income amount itself is unchanged.
   from the pot in today's dollars using the real retirement return
   $(1+r_{after})/(1+\text{inflation})-1$. The nominal drawdown simulation
   indexes each withdrawal by inflation from today and ends at ~\$0, or at the
-  inflated value of "Desired amount to be left at the end" if one is set (its
+  inflated value of "End cushion" if one is set (its
   present value at retirement, cushion $/(1+r_{real})^{N}$, is reserved before solving spending).
   With delayed other income, the portfolio withdrawal is the full level
   spend during the bridge months and level-minus-income afterwards, and the
@@ -281,10 +283,16 @@ income amount itself is unchanged.
 
 ## Files
 
+Classic scripts loaded in order by `index.html` (no build step, works from `file://`):
+
 | File | Purpose |
 |---|---|
 | `index.html` | Markup and form |
-| `app.js` | Simulation, solver, D3 charts, persistence |
+| `js/core.js` | Pure financial core: simulation, solver, Monte Carlo, share links (no DOM; also `require()`-able by Node tests via its `RP` exports) |
+| `js/ui.js` | Shared UI state, DOM helpers (`$`, `setText`, `setPressed`, `fillCard`), input parsing/formatting |
+| `js/charts.js` | D3 balance chart + Monte Carlo histogram |
+| `js/render.js` | Headline/Monte Carlo rendering, debounced MC scheduling + caches, back-fill UI |
+| `js/main.js` | Entry point: persistence (localStorage/share links) + event wiring |
 | `d3.min.js` | Vendored D3 v7.9.0 (MIT, © Mike Bostock) — loaded locally, no CDN |
 | `README.md` | This file |
 

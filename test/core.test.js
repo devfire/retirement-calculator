@@ -1,13 +1,13 @@
 // Automated tests for the financial core (issue #8).
-// Run: node --test   (no deps; core is require()d directly from app.js —
-// app.js guards browser-only wiring and exports the pure functions).
+// Run: node --test   (no deps; core is require()d directly from js/core.js —
+// js/core.js is a classic browser script that also exports RP under Node).
 "use strict";
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   FIELDS, nowYear, compute, monteCarlo, guardrailMC, riskGuardrailMC,
   backfillPlan, encodeShare, decodeShare, successAtSpend, makeGauss, mcSetup,
-} = require("../app.js");
+} = require("../js/core.js");
 
 const base = (over = {}) => ({
   currentSavings: 1_000_000, retireYear: nowYear + 10, monthlyContribution: 4000,

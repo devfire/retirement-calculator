@@ -268,7 +268,7 @@
           <div class="scen-grid">
             <div><span id="riskSuccessLabel">Chance the headline spending lasts</span><strong id="riskSuccess">—</strong><small id="riskSuccessNote">enable risk-based guardrails to compare</small></div>
             <div class="cautious"><span>Average spending over retirement</span><strong id="riskAvgSpend">—</strong><small id="riskAvgNote">after annual adjustments, today-$</small></div>
-            <div><span>Lowest monthly spend (median path)</span><strong id="riskMinSpend">—</strong><small id="riskMinNote">how deep the cuts get, today-$</small></div>
+            <div><span>Median of each path's lowest month</span><strong id="riskMinSpend">—</strong><small id="riskMinNote">how deep the cuts get, today-$</small></div>
           </div>
           <p class="fineprint">Not Guyton-Klinger proper either (see block 3): this keys off plan health — pot and years left — not a withdrawal-rate band. It is an annual re-solve targeting the success-target spend, not Income Lab's monthly whole-plan risk recalculation (no mortality, taxes, or lumpy cash flows here), and it assumes you actually review and adjust every year. Note there is no “starting spend at the success target” here: with yearly resets, year-1 spending barely binds, so that number would be meaningless — average and lowest spending are the honest measures.</p>
         </div>
@@ -279,6 +279,10 @@
 </main>
 <footer>Runs 100% client-side · Your inputs persist only in this browser (localStorage) and in share links you create.</footer>
 <script src="d3.min.js"></script>
-<script src="app.js"></script>
+<script src="js/core.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/charts.js"></script>
+<script src="js/render.js"></script>
+<script src="js/main.js"></script>
 </body>
 </html>
