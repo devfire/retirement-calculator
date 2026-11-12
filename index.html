@@ -93,6 +93,16 @@
           </div>
         </div>
       </fieldset>
+      <fieldset>
+        <legend>Spending guardrails <em>(optional — Monte Carlo only)</em></legend>
+        <label class="field check-field"><input id="guardrailEnabled" type="checkbox"> <span>Cut spending after a down year</span></label>
+        <div class="field-row">
+          <label class="field"><span>Cut spending by</span>
+            <div class="pct"><input id="guardrailCut" type="number" step="1" min="0" max="50" value="10"><i>%</i></div>
+            <small class="hint">In the 12 months after any year the market return is below 0%, total spending drops by this much; it restores the year after an up year. Applies only to discretionary flexibility in the Monte Carlo comparison below — the headline level spend is unchanged.</small>
+          </label>
+        </div>
+      </fieldset>
 
       <fieldset>
         <legend>Market &amp; horizon assumptions</legend>
@@ -217,6 +227,17 @@
           </div>
           <p class="mc-note" id="mcDesiredOut" hidden></p>
           <div class="mc-chart-wrap"><svg id="mcChart" role="img" aria-label="Histogram of sustainable monthly spending across 1,000 simulated Monte Carlo paths"></svg><div id="mcTooltip" class="tooltip" hidden></div><p class="mc-chart-cap" id="mcChartCap">Distribution of the monthly spending each simulated path could sustain — bars left of the headline line are paths where it runs short.</p></div>
+        </div>
+        <div class="risk-block guardrails">
+          <div class="risk-block-head">
+            <h3>3. Guardrails — cut spending only after down years</h3>
+            <p id="guardDesc">Enable “Cut spending after a down year” in Your plan: in the 12 months after a year with a negative market return, spending drops by your chosen cut, then restores after an up year. Same 1,000 simulated paths as above.</p>
+          </div>
+          <div class="scen-grid">
+            <div><span id="guardSuccessLabel">Chance the headline spending lasts</span><strong id="guardSuccess">—</strong><small id="guardSuccessNote">enable guardrails to compare</small></div>
+            <div class="cautious"><span id="guardSpendLabel">Spending at 85% success with guardrails</span><strong id="guardSpend">—</strong><small id="guardSpendNote">vs. without guardrails</small></div>
+            <div><span>Retirement years spent cutting</span><strong id="guardCutShare">—</strong><small id="guardCutNote">share of years, averaged across paths</small></div>
+          </div>
         </div>
       </div>
       <p class="fineprint risk-foot">The deterministic headline is calibrated to be the <em>median</em> Monte Carlo path (~50% success with no cushion). Don't stack both pessimisms: the −2%/yr scenario is already the middle path under permanently worse returns, whereas the Monte Carlo target protects against bad sequence-of-returns timing around your baseline.</p>

@@ -55,6 +55,7 @@ inflation, retirement in 10 years):
 | Inflation | Used to restate everything in today's purchasing power |
 | Years spent in retirement | How long the pot must last; spending is solved to end at ~$0 exactly then |
 | Volatility before retirement / in retirement | Monte Carlo only: how much annual returns swing around the growth rates above (σ). Defaults come from the growth presets (e.g. Growth: 14% / 9%) |
+| Guardrails: cut after a down year | Optional Monte Carlo strategy. When enabled, spending is cut by the chosen % (default 10%, clamped 0–50%) for the 12 months after any year with a negative market return, then restored after an up year |
 | Other income at retirement | Pension / Social Security, in today's $/mo, assumed inflation-indexed (see note below) |
 | Other income starts in year | Optional. When that pension / Social Security actually begins — for Social Security, birth year + claiming age (e.g. 1970 + 67 = 2037). Blank = at retirement. Until it starts, the portfolio funds *all* spending (the bridge); afterwards it only tops income up to the spending level |
 | Spending you'd like | Optional check: "how long would $X/mo actually last?" plus a gap solver (below) |
@@ -102,6 +103,15 @@ them individually afterwards.
   else the headline) runs short — with headline, desired (when entered), and
   success-target markers (hover for path counts). The headline number itself
   animates to its new value when inputs change.
+- **Guardrails card** — with the strategy enabled, a third stress-test block
+  re-runs the same 1,000 paths with the cut applied: the chance the tested
+  spending (desired spending when entered, else the headline) lasts with
+  guardrails vs. without, the spending supportable at the success target
+  with guardrails (and how much more that is than without), and the average
+  share of retirement years spent in a cut — with the reduced monthly amount
+  in those years. Guardrails only change the Monte Carlo comparison; the
+  deterministic headline, gap solver, and chart stay on the level-spending
+  baseline so the benefit is measured against it.
 
 ### Desired-spending check, gap solver & back-fill
 
@@ -182,6 +192,16 @@ income amount itself is unchanged.
   analytically; success rates and the spending at the success target (an
   Assumptions input, default 85%) are read off that distribution. Inflation, contributions, and other income stay at
   their entered values — only returns vary.
+- **Guardrails (Monte Carlo only):** a retirement year is a *cut year* when
+  the previous year's compounded market return was negative (the last year
+  before retirement counts for the first retirement year). In a cut year the
+  level total spend is multiplied by `1 − cut%` before subtracting other
+  income (portfolio withdrawal floored at $0, bridge years fund the cut
+  spend in full); it restores automatically after an up year. Because the
+  withdrawal then depends on the path's own return history, the affine
+  shortcut no longer applies — each path's maximum guardrailed spend is
+  bisected exactly (withdrawals are monotone in the level spend), reusing
+  that path's simulated returns, end-cushion and other-income bridge.
 - Everything is reported in **today's dollars** unless labelled "future $":
   future amounts are divided by $(1+\text{inflation})^{\text{years}}$.
 - Inputs are clamped to sane ranges (returns −50%…30%, inflation −10%…30%,

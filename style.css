@@ -22,6 +22,7 @@ legend em{font-weight:500;color:var(--muted);font-style:normal;text-transform:no
 .money,.pct{display:flex;align-items:center;border:1px solid var(--border);border-radius:9px;background:var(--surface-soft);overflow:hidden}.money:focus-within,.pct:focus-within{outline:2px solid var(--accent);outline-offset:1px;border-color:transparent;background:#fff}
 .money i,.pct i{font-style:normal;color:var(--muted);padding:0 3px 0 10px;font-size:13.5px;white-space:nowrap}.money input,.pct input{border:0!important;background:transparent!important;outline:none!important}.pct i{padding:0 10px 0 3px}
 .hint{display:block;color:var(--muted);font-size:11.5px;line-height:1.4;margin-top:4px}
+.check-field{display:flex;align-items:center;gap:8px;cursor:pointer}.check-field input{width:17px;height:17px;accent-color:var(--accent);flex:none}.check-field>span{margin:0}
 .field-group-hint{margin:-4px 0 12px}
 .slider-row{display:flex;gap:12px;align-items:center}.slider-row input{flex:1;accent-color:var(--accent)}.slider-row output{font-weight:700;min-width:52px;text-align:right;font-size:14px}
 .range-dual{position:relative;height:28px;--lo:0%;--hi:50%}

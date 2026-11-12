@@ -1,6 +1,6 @@
 "use strict";
 const $ = id => document.getElementById(id);
-const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribStartYear","contribEndYear","contribGrowth","returnBefore","returnAfter","volBefore","volAfter","inflation","retireYears","mcSuccessTarget","otherIncome","otherIncomeStartYear","desiredEndAmount","desiredSpend"];
+const FIELDS = ["currentSavings","retireYear","monthlyContribution","contribStartYear","contribEndYear","contribGrowth","returnBefore","returnAfter","volBefore","volAfter","inflation","retireYears","mcSuccessTarget","otherIncome","otherIncomeStartYear","desiredEndAmount","desiredSpend","guardrailCut","guardrailEnabled"];
 const MONEY_FIELDS = ["currentSavings","monthlyContribution","otherIncome","desiredEndAmount","desiredSpend"];
 const nowYear = new Date().getFullYear();
 const fmt = new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0});
@@ -39,7 +39,10 @@ function formatMoneyInput(input){
 }
 function readInputs(){
   const v = {};
-  for (const f of FIELDS){ const raw = $(f).value; v[f] = raw === "" ? NaN : parseFloat(String(raw).replace(/,/g, "")); }
+  for (const f of FIELDS){
+    if (f === "guardrailEnabled"){ v[f] = $(f).checked ? 1 : 0; continue; }
+    const raw = $(f).value; v[f] = raw === "" ? NaN : parseFloat(String(raw).replace(/,/g, ""));
+  }
   return v;
 }
 
@@ -57,6 +60,7 @@ function compute(raw){
     returnBefore: clamp(num(raw.returnBefore), -50, 30), returnAfter: clamp(num(raw.returnAfter), -50, 30),
     volBefore: clamp(num(raw.volBefore), 0, 40), volAfter: clamp(num(raw.volAfter), 0, 40),
     mcSuccessTarget: Math.round(clamp(num(raw.mcSuccessTarget, 85), 1, 99)),
+    guardrailCut: clamp(num(raw.guardrailCut, 10), 0, 50), guardrailEnabled: raw.guardrailEnabled ? 1 : 0,
     inflation: clamp(num(raw.inflation), -10, 30) };
   const clamped = ["returnBefore","returnAfter","inflation","contribGrowth","volBefore","volAfter","mcSuccessTarget"].some(k => v[k] !== num(raw[k]));
   const warns = clamped ? ["Some assumptions were outside sane ranges and were clamped (−50%…30% returns, −10%…30% inflation, 0…40% volatility, 1…99% Monte Carlo success target)."] : [];
@@ -205,20 +209,35 @@ function monteCarlo(R){
   const rng = () => { state |= 0; state = state + 0x6D2B79F5 | 0; let t = Math.imul(state ^ state >>> 15, 1 | state); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
   const gauss = () => { if (spare !== null){ const s = spare; spare = null; return s; } let u = 0, w = 0, r = 0; do { u = 2*rng()-1; w = 2*rng()-1; r = u*u + w*w; } while (r >= 1 || r === 0); const m = Math.sqrt(-2*Math.log(r)/r); spare = w*m; return u*m; };
   const sMax = new Float64Array(MC_TRIALS);
+  const guardActive = !!v.guardrailEnabled && (v.guardrailCut||0) > 0;
+  const cutFrac = guardActive ? v.guardrailCut/100 : 0;
+  const gMax = guardActive ? new Float64Array(MC_TRIALS) : null;
+  let guardCutYears = 0, guardYearsTotal = 0;
   const bands = R.points.map(() => []); // nominal balance at each chart point, under the headline spend
+  const bandsG = guardActive ? R.points.map(() => []) : null;
   for (let trial = 0; trial < MC_TRIALS; trial++){
-    let bal = v.currentSavings||0, bi = 0;
-    bands[bi++].push(bal);
+    let bal = v.currentSavings||0, bi = 0, biG = 0;
+    bands[bi++].push(bal); if (bandsG) bandsG[biG++].push(bal);
+    let prodB = 1, lastYearProd = null;
     for (let m = 0; m < monthsRet; m++){
       bal += contribAmt[m];
-      bal *= Math.exp(muB + sigB * gauss());
-      if ((m+1) % 12 === 0 || m === monthsRet-1) bands[bi++].push(bal);
+      const gB = Math.exp(muB + sigB * gauss()); bal *= gB; prodB *= gB;
+      if ((m+1) % 12 === 0){ lastYearProd = prodB; prodB = 1; }
+      if ((m+1) % 12 === 0 || m === monthsRet-1){ bands[bi++].push(bal); if (bandsG) bandsG[biG++].push(bal); }
     }
+    const priorDown = lastYearProd !== null && lastYearProd < 1; // last pre-retirement year down → first retirement year is a cut year
+    const balRetire = bal;
     // Retirement: A/S·B coefficients for the high regime (S ≥ income) and low regime (S ≤ income),
     // plus the actual balance path under the headline spend for the chart bands.
     let aH = bal, bH = 0, aL = bal, bL = 0, maxH = Infinity, maxL = Infinity;
+    let balG = bal, yearProd = 1, prevDown = false, curFactor = 1;
+    const gRet = guardActive ? new Float64Array(N) : null, factorRet = guardActive ? new Float64Array(N) : null;
     for (let m = 0; m < N; m++){
       const inflF = inflRet[m], g = Math.exp(muA + sigA * gauss()), bridged = m >= delay;
+      if (guardActive){
+        if (m % 12 === 0){ const isCut = m === 0 ? priorDown : prevDown; curFactor = isCut ? 1 - cutFrac : 1; if (isCut) guardCutYears++; guardYearsTotal++; }
+        gRet[m] = g; factorRet[m] = curFactor;
+      }
       maxH = Math.min(maxH, (aH + (bridged ? income * inflF : 0)) / (bH + inflF));
       const denL = bL + (bridged ? 0 : inflF);
       if (denL > 0) maxL = Math.min(maxL, aL / denL); else if (aL < 0) maxL = -Infinity;
@@ -226,21 +245,41 @@ function monteCarlo(R){
       aL *= g; if (!bridged) bL = (bL + inflF) * g; else bL *= g;
       const w = (bridged ? Math.max(0, spend - income) : spend) * inflF;
       bal = bal < w ? 0 : (bal - w) * g;
-      if ((m+1) % 12 === 0 || m === N-1) bands[bi++].push(bal);
+      if (guardActive){ const wG = (bridged ? Math.max(0, spend * curFactor - income) : spend * curFactor) * inflF; balG = balG < wG ? 0 : (balG - wG) * g; }
+      yearProd *= g; if ((m+1) % 12 === 0){ prevDown = yearProd < 1; yearProd = 1; }
+      if ((m+1) % 12 === 0 || m === N-1){ bands[bi++].push(bal); if (bandsG) bandsG[biG++].push(balG); }
     }
     if (bH > 0) maxH = Math.min(maxH, (aH - R.cushionFuture) / bH);
     if (bL > 0) maxL = Math.min(maxL, (aL - R.cushionFuture) / bL);
     sMax[trial] = income > 0 && maxL < income ? maxL : maxH;
+    if (guardActive){
+      // Guardrailed spend is path-dependent (cut factor depends on prior-year returns), so no
+      // affine shortcut: bisect this path's exact maximum level spend S. Withdrawals are
+      // monotone in S, so success is monotone and bisection is exact to ~$1.
+      const simG = S => { let b = balRetire; for (let m = 0; m < N; m++){ const total = S * factorRet[m], pw = m >= delay ? Math.max(0, total - income) : total, w = pw * inflRet[m]; if (b < w) return false; b = (b - w) * gRet[m]; } return b >= R.cushionFuture - 1e-6; };
+      if (!simG(0)) gMax[trial] = -1;
+      else { let lo = 0, hi = Math.max(1, spend, income); while (simG(hi) && hi < 1e8) hi *= 2; for (let it = 0; it < 24; it++){ const mid = (lo + hi)/2; if (simG(mid)) lo = mid; else hi = mid; } gMax[trial] = lo; }
+    }
   }
   const sorted = Float64Array.from(sMax).sort(), quantile = (arr, q) => arr[Math.min(arr.length-1, Math.max(0, Math.floor(q * arr.length)))];
   const successAt = s => { let n = 0; for (const x of sMax) if (x >= s - 1e-6) n++; return n / MC_TRIALS; };
   const bandPts = bands.map((vals, i) => { const s = Float64Array.from(vals).sort(); return {t: R.points[i].t, p10: quantile(s, .1), p50: quantile(s, .5), p90: quantile(s, .9)}; });
   const deflate = yrs => Math.pow(1 + inflAnnual, yrs);
+  let guardrail = null;
+  if (guardActive){
+    const gSorted = Float64Array.from(gMax).sort(), gSuccessAt = s => { let n = 0; for (const x of gMax) if (x >= s - 1e-6) n++; return n / MC_TRIALS; };
+    const bandGPts = bandsG.map((vals, i) => { const s = Float64Array.from(vals).sort(); return {t: R.points[i].t, p10: quantile(s, .1), p50: quantile(s, .5), p90: quantile(s, .9)}; });
+    guardrail = { cut: v.guardrailCut, success: gSuccessAt(spend),
+      successDesired: Number.isFinite(v.desiredSpend) ? gSuccessAt(Math.max(0, v.desiredSpend)) : null,
+      spendAtTarget: Math.max(0, quantile(gSorted, 1 - v.mcSuccessTarget/100)),
+      medianEndToday: bandGPts[bandGPts.length-1].p50 / deflate(R.yrs + (v.retireYears||0)),
+      cutYearShare: guardYearsTotal > 0 ? guardCutYears / guardYearsTotal : 0, sMax: Array.from(gSorted) };
+  }
   return { trials: MC_TRIALS, success: successAt(spend), sMax: Array.from(sorted),
            successDesired: Number.isFinite(v.desiredSpend) ? successAt(Math.max(0, v.desiredSpend)) : null,
            spendAtTarget: Math.max(0, quantile(sorted, 1 - v.mcSuccessTarget/100)), successTarget: v.mcSuccessTarget,
            medianEndToday: bandPts[bandPts.length-1].p50 / deflate(R.yrs + (v.retireYears||0)),
-           p10EndToday: bandPts[bandPts.length-1].p10 / deflate(R.yrs + (v.retireYears||0)), bands: bandPts };
+           p10EndToday: bandPts[bandPts.length-1].p10 / deflate(R.yrs + (v.retireYears||0)), bands: bandPts, guardrail };
 }
 
 /** Plan that rewrites savings/contributions so sustainable spending meets the desired level, in
@@ -288,6 +327,33 @@ function tweenMoney(el, value){
 function mcTestSpend(R){
   return Number.isFinite(R.san.desiredSpend) ? Math.max(0, R.san.desiredSpend) : R.totalSpendToday;
 }
+function renderGuardrails(MC, R, v, pending = false){
+  const testSpend = mcTestSpend(R), active = !!R.san.guardrailEnabled && R.san.guardrailCut > 0, G = MC && MC.guardrail;
+  $("guardSuccessLabel").textContent = `Chance ${fmt.format(testSpend)}/mo lasts ${v.retireYears} yrs`;
+  $("guardSpendLabel").textContent = `Spending at ${R.san.mcSuccessTarget}% success with guardrails`;
+  $("guardDesc").textContent = active
+    ? `Cutting spending by ${R.san.guardrailCut}% for the 12 months after any year with a negative market return (including the last year before retirement), then restoring it after an up year — on the same 1,000 simulated paths. Median pot left with guardrails: ${G ? fmt.format(G.medianEndToday) + " in today's $" : "…"}.`
+    : "Enable “Cut spending after a down year” in Your plan: in the 12 months after a year with a negative market return, spending drops by your chosen cut, then restores after an up year. Same 1,000 simulated paths as above.";
+  if (!active){
+    $("guardSuccess").textContent = "—"; $("guardSuccessNote").textContent = "enable guardrails to compare";
+    $("guardSpend").textContent = "—"; $("guardSpendNote").textContent = "vs. without guardrails";
+    $("guardCutShare").textContent = "—"; $("guardCutNote").textContent = "share of years, averaged across paths";
+    return;
+  }
+  if (pending || !G){
+    $("guardSuccess").textContent = "…"; $("guardSuccessNote").textContent = "calculating…";
+    $("guardSpend").textContent = "…"; $("guardSpendNote").textContent = "calculating…";
+    $("guardCutShare").textContent = "…"; $("guardCutNote").textContent = "calculating…";
+    return;
+  }
+  const hasDesired = G.successDesired !== null, basePct = Math.round((hasDesired ? MC.successDesired : MC.success) * 100);
+  $("guardSuccess").textContent = Math.round((hasDesired ? G.successDesired : G.success) * 100) + "%";
+  $("guardSuccessNote").textContent = `vs. ${basePct}% without guardrails, of ${MC.trials.toLocaleString()} paths`;
+  $("guardSpend").textContent = fmt.format(G.spendAtTarget);
+  $("guardSpendNote").textContent = `vs. ${fmt.format(MC.spendAtTarget)}/mo without — ${fmt.format(Math.max(0, G.spendAtTarget - MC.spendAtTarget))}/mo more at the same ${MC.successTarget}% target`;
+  $("guardCutShare").textContent = Math.round(G.cutYearShare * 100) + "%";
+  $("guardCutNote").textContent = `in cut years spending drops to ${fmt.format(testSpend * (1 - R.san.guardrailCut/100))}/mo (from ${fmt.format(testSpend)}/mo), today-$`;
+}
 function applyMonteCarlo(MC, R, v){
   if (!MC){
     $("mcSuccessLabel").textContent = "Chance the headline spending lasts";
@@ -298,6 +364,7 @@ function applyMonteCarlo(MC, R, v){
     $("mcMedianEnd").textContent = "—";
     $("mcMedianEndNote").textContent = "in today's $";
     $("mcDesiredOut").hidden = true;
+    renderGuardrails(null, R, v);
     drawMcChart(null, null, false);
     return;
   }
@@ -314,6 +381,7 @@ function applyMonteCarlo(MC, R, v){
     dMC.hidden = false;
     dMC.textContent = `For comparison, the headline ${fmt.format(R.totalSpendToday)}/mo lasted in ${Math.round(MC.success * 100)}% of simulated paths. Spending ${fmt.format(MC.spendAtTarget)}/mo would have lasted in ${MC.successTarget}%.`;
   } else dMC.hidden = true;
+  renderGuardrails(MC, R, v);
   drawMcChart(MC, R, true);
 }
 function showMonteCarloPending(R, v){
@@ -325,6 +393,7 @@ function showMonteCarloPending(R, v){
   $("mcMedianEnd").textContent = "…";
   $("mcMedianEndNote").textContent = "calculating 1,000 simulated paths…";
   $("mcDesiredOut").hidden = true;
+  renderGuardrails(null, R, v, true);
   drawMcChart(null, null, false);
 }
 function scheduleMonteCarlo(R, v, key){
@@ -617,7 +686,7 @@ function apply(obj){
     o.contribStartYear = nowYear; o.contribEndYear = nowYear + Number(o.contribYears);
   }
   for (const id of ["contribStartYear","contribEndYear"]){ $(id).min = nowYear; $(id).max = Math.max(nowYear + 60, Number(o.contribEndYear) || 0, Number(o.retireYear) || 0); }
-  for (const f of FIELDS) if (o[f] !== undefined && o[f] !== null && !Number.isNaN(o[f])) $(f).value = MONEY_FIELDS.includes(f) ? formatMoneyString(o[f]) : o[f];
+  for (const f of FIELDS) if (o[f] !== undefined && o[f] !== null && !Number.isNaN(o[f])){ if (f === "guardrailEnabled"){ $(f).checked = !!o[f]; continue; } $(f).value = MONEY_FIELDS.includes(f) ? formatMoneyString(o[f]) : o[f]; }
 }
 /** Share format v1: values in FIELDS order, comma-joined, blanks empty, trailing
  *  blanks dropped — e.g. #v1:1000000,2036,5000,2026,2031,… Append new fields to
@@ -653,7 +722,7 @@ $("shareBtn").onclick = async () => {
   catch{ prompt("Copy your share link:", url); }
   setTimeout(() => $("shareBtn").textContent = "🔗 Copy share link", 1800);
 };
-$("resetBtn").onclick = () => { stickySolve = false; backfillMode = "monthly"; adoptShared(); localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribStartYear:nowYear, contribEndYear:nowYear+5, contribGrowth:0, returnBefore:7, returnAfter:4.5, volBefore:14, volAfter:9, inflation:2.5, retireYears:30, mcSuccessTarget:85, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
+$("resetBtn").onclick = () => { stickySolve = false; backfillMode = "monthly"; adoptShared(); localStorage.removeItem("retireplan-v1"); apply({currentSavings:1000000, retireYear:nowYear+10, monthlyContribution:0, contribStartYear:nowYear, contribEndYear:nowYear+5, contribGrowth:0, returnBefore:7, returnAfter:4.5, volBefore:14, volAfter:9, inflation:2.5, retireYears:30, mcSuccessTarget:85, otherIncome:0, desiredEndAmount:0, desiredSpend:NaN, guardrailCut:10, guardrailEnabled:0}); $("desiredSpend").value=""; $("otherIncomeStartYear").value=""; render(); };
 $("backfillBtn").onclick = () => { if (!lastBackfill) return; adoptShared(); stickySolve = true; apply(lastBackfill); render(); };
 $("backfillMonthly").onclick = () => { backfillMode = "monthly"; stickySolve = false; render(); };
 $("backfillSavings").onclick = () => { backfillMode = "savings"; stickySolve = false; render(); };
