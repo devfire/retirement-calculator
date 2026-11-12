@@ -55,7 +55,8 @@ inflation, retirement in 10 years):
 | Inflation | Used to restate everything in today's purchasing power |
 | Years spent in retirement | How long the pot must last; spending is solved to end at ~$0 exactly then |
 | Volatility before retirement / in retirement | Monte Carlo only: how much annual returns swing around the growth rates above (σ). Defaults come from the growth presets (e.g. Growth: 14% / 9%) |
-| Guardrails: cut after a down year | Optional Monte Carlo strategy. When enabled, spending is cut by the chosen % (default 10%, clamped 0–50%) for the 12 months after any year with a negative market return, then restored after an up year |
+| Down-year rule: cut after a down year | Optional Monte Carlo strategy. When enabled, spending is cut by the chosen % (default 10%, clamped 0–50%) for the 12 months after any year with a negative market return, then restored after an up year |
+| Risk-based guardrails (re-solve yearly) | Optional Monte Carlo strategy. At each retirement anniversary, sustainable spending is re-solved from the actual pot over the years left, targeting the success-target spend (default 85%). Raises go fully to the re-solved level; cuts close a chosen % of the gap per year (default 10%); changes under a chosen threshold (default 5%) are ignored |
 | Other income at retirement | Pension / Social Security, in today's $/mo, assumed inflation-indexed (see note below) |
 | Other income starts in year | Optional. When that pension / Social Security actually begins — for Social Security, birth year + claiming age (e.g. 1970 + 67 = 2037). Blank = at retirement. Until it starts, the portfolio funds *all* spending (the bridge); afterwards it only tops income up to the spending level |
 | Spending you'd like | Optional check: "how long would $X/mo actually last?" plus a gap solver (below) |
@@ -103,15 +104,29 @@ them individually afterwards.
   else the headline) runs short — with headline, desired (when entered), and
   success-target markers (hover for path counts). The headline number itself
   animates to its new value when inputs change.
-- **Guardrails card** — with the strategy enabled, a third stress-test block
+- **Down-year rule card** (stress-test block 3) — with the strategy enabled,
   re-runs the same 1,000 paths with the cut applied: the chance the tested
-  spending (desired spending when entered, else the headline) lasts with
-  guardrails vs. without, the spending supportable at the success target
-  with guardrails (and how much more that is than without), and the average
-  share of retirement years spent in a cut — with the reduced monthly amount
-  in those years. Guardrails only change the Monte Carlo comparison; the
-  deterministic headline, gap solver, and chart stay on the level-spending
-  baseline so the benefit is measured against it.
+  spending (desired spending when entered, else the headline) lasts with the
+  rule vs. without, the spending supportable at the success target with the
+  rule (and how much more that is than without), and the average share of
+  retirement years spent in a cut — with the reduced monthly amount in those
+  years.
+- **Risk-based guardrails card** (block 4) — with that strategy enabled, the
+  same paths are replayed with spending re-solved every anniversary: the
+  chance the tested spending lasts vs. without, the *average* monthly
+  spending actually paid over retirement (raises included), and the *lowest*
+  monthly spending on the median path (10th-percentile dip also shown) — how
+  deep the cuts get. Starting below the re-solved level, this strategy raises
+  spending, so its success at a conservative tested spend can *fall* while
+  average spending rises: that trade is the point (it defends against
+  underspending). There is deliberately no “starting spend at the success
+  target”: with yearly resets, year-1 spending barely binds, so that number
+  would be meaningless. Neither strategy is Guyton-Klinger proper —
+  GK triggers on the withdrawal rate drifting ±20% from its starting rate, a
+  third variant this app does not model (Pfau 2015 and Jeske 2017 find its
+  cuts often overshoot). Both strategies only change the Monte Carlo
+  comparison; the deterministic headline, gap solver, and chart stay on the
+  level-spending baseline so the benefit is measured against it.
 
 ### Desired-spending check, gap solver & back-fill
 
@@ -192,16 +207,31 @@ income amount itself is unchanged.
   analytically; success rates and the spending at the success target (an
   Assumptions input, default 85%) are read off that distribution. Inflation, contributions, and other income stay at
   their entered values — only returns vary.
-- **Guardrails (Monte Carlo only):** a retirement year is a *cut year* when
+- **Down-year rule (Monte Carlo only):** a retirement year is a *cut year* when
   the previous year's compounded market return was negative (the last year
   before retirement counts for the first retirement year). In a cut year the
   level total spend is multiplied by `1 − cut%` before subtracting other
   income (portfolio withdrawal floored at $0, bridge years fund the cut
-  spend in full); it restores automatically after an up year. Because the
-  withdrawal then depends on the path's own return history, the affine
-  shortcut no longer applies — each path's maximum guardrailed spend is
-  bisected exactly (withdrawals are monotone in the level spend), reusing
-  that path's simulated returns, end-cushion and other-income bridge.
+  spend in full); it restores automatically after an up year, and the cut
+  never stacks. Because the withdrawal then depends on the path's own return
+  history, the affine shortcut no longer applies — each path's maximum
+  guardrailed spend is bisected exactly (withdrawals are monotone in the
+  level spend), reusing that path's simulated returns, end-cushion and
+  other-income bridge.
+- **Risk-based guardrails (Monte Carlo only):** at each retirement
+  anniversary, spending is re-solved from the path's actual balance over the
+  remaining months, assuming the entered real return from then on (no
+  look-ahead at the path's future returns, which are stored per path and
+  used only to realize outcomes). The re-solve targets the success-target
+  spend, not the median: the median re-solve is haircut by
+  $k = 1-(1-k_{full})\sqrt{\text{months left}/N}$, where $k_{full}$ is the
+  baseline ratio (spending at the success target ÷ headline spending), so
+  the haircut fades as the horizon shrinks — raising to the unadjusted
+  median would reset every good year to a coin-flip. Raises go fully to the
+  re-solved level; cuts close the configured share of the gap; changes
+  within the configured ±band are ignored. This is an annual, single-number
+  approximation of risk-based guardrails, not a monthly whole-plan risk
+  recalculation (no mortality, taxes, or lumpy cash flows).
 - Everything is reported in **today's dollars** unless labelled "future $":
   future amounts are divided by $(1+\text{inflation})^{\text{years}}$.
 - Inputs are clamped to sane ranges (returns −50%…30%, inflation −10%…30%,

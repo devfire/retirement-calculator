@@ -102,6 +102,16 @@
             <small class="hint">In the 12 months after any year the market return is below 0%, total spending drops by this much; it restores the year after an up year. Applies only to discretionary flexibility in the Monte Carlo comparison below — the headline level spend is unchanged.</small>
           </label>
         </div>
+        <label class="field check-field"><input id="riskGuardEnabled" type="checkbox"> <span>Risk-based guardrails (re-solve yearly)</span></label>
+        <div class="field-row">
+          <label class="field"><span>Ignore changes under</span>
+            <div class="pct"><input id="riskMinChange" type="number" step="1" min="0" max="50" value="5"><i>%</i></div>
+          </label>
+          <label class="field"><span>Cut step — close gap by</span>
+            <div class="pct"><input id="riskCutStep" type="number" step="5" min="1" max="100" value="10"><i>% / yr</i></div>
+          </label>
+        </div>
+        <small class="hint">Each retirement anniversary, sustainable spending is re-solved from the actual pot over the years left. Raises go fully to the re-solved level; cuts close only the chosen share of the gap per year; changes under the threshold are ignored — gradual on purpose, to avoid whipsawing. Neither strategy here is Guyton-Klinger proper (see notes under the results).</small>
       </fieldset>
 
       <fieldset>
@@ -230,7 +240,7 @@
         </div>
         <div class="risk-block guardrails">
           <div class="risk-block-head">
-            <h3>3. Guardrails — cut spending only after down years</h3>
+            <h3>3. Down-year rule (simple guardrail)</h3>
             <p id="guardDesc">Enable “Cut spending after a down year” in Your plan: in the 12 months after a year with a negative market return, spending drops by your chosen cut, then restores after an up year. Same 1,000 simulated paths as above.</p>
           </div>
           <div class="scen-grid">
@@ -238,6 +248,19 @@
             <div class="cautious"><span id="guardSpendLabel">Spending at 85% success with guardrails</span><strong id="guardSpend">—</strong><small id="guardSpendNote">vs. without guardrails</small></div>
             <div><span>Retirement years spent cutting</span><strong id="guardCutShare">—</strong><small id="guardCutNote">share of years, averaged across paths</small></div>
           </div>
+          <p class="fineprint">Not Guyton-Klinger proper: GK triggers on the withdrawal rate drifting ±20% from its starting rate and cuts/raises 10% — a third variant this app does not model (research by Pfau and Jeske finds its cuts often overshoot). This rule keys off market returns instead, and its cut never stacks.</p>
+        </div>
+        <div class="risk-block guardrails">
+          <div class="risk-block-head">
+            <h3>4. Risk-based guardrails (re-solved annually)</h3>
+            <p id="riskDesc">Enable “Risk-based guardrails” in Your plan: each retirement anniversary, sustainable spending is re-solved from the pot you actually have over the years left, on the same 1,000 paths. Raises go fully to the re-solved level; cuts close only part of the gap each year.</p>
+          </div>
+          <div class="scen-grid">
+            <div><span id="riskSuccessLabel">Chance the headline spending lasts</span><strong id="riskSuccess">—</strong><small id="riskSuccessNote">enable risk-based guardrails to compare</small></div>
+            <div class="cautious"><span>Average spending over retirement</span><strong id="riskAvgSpend">—</strong><small id="riskAvgNote">after annual adjustments, today-$</small></div>
+            <div><span>Lowest monthly spend (median path)</span><strong id="riskMinSpend">—</strong><small id="riskMinNote">how deep the cuts get, today-$</small></div>
+          </div>
+          <p class="fineprint">Not Guyton-Klinger proper either (see block 3): this keys off plan health — pot and years left — not a withdrawal-rate band. It is an annual re-solve targeting the success-target spend, not Income Lab's monthly whole-plan risk recalculation (no mortality, taxes, or lumpy cash flows here), and it assumes you actually review and adjust every year. Note there is no “starting spend at the success target” here: with yearly resets, year-1 spending barely binds, so that number would be meaningless — average and lowest spending are the honest measures.</p>
         </div>
       </div>
       <p class="fineprint risk-foot">The deterministic headline is calibrated to be the <em>median</em> Monte Carlo path (~50% success with no cushion). Don't stack both pessimisms: the −2%/yr scenario is already the middle path under permanently worse returns, whereas the Monte Carlo target protects against bad sequence-of-returns timing around your baseline.</p>
