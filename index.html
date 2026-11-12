@@ -24,12 +24,14 @@
 
 <main class="layout">
   <form id="form" class="panel inputs" autocomplete="off">
-    <h2>Your plan</h2>
-    <div class="timeline" id="timeline" aria-label="Your timeline"></div>
+    <div class="inputs-head">
+      <h2>Your plan</h2>
+      <small>Changes update live</small>
+    </div>
 
     <div class="plan-fields">
       <fieldset>
-        <legend>Where you stand</legend>
+        <legend>1 · Starting point &amp; contributions</legend>
         <div class="field-row">
           <label class="field"><span>Current savings</span>
             <div class="money"><i>$</i><input id="currentSavings" type="text" inputmode="decimal" value="1000000"></div>
@@ -41,7 +43,7 @@
           <label class="field"><span>Monthly contribution</span>
             <div class="money"><i>$</i><input id="monthlyContribution" type="text" inputmode="decimal" value="0"></div>
           </label>
-          <label class="field"><span>Contribution increase / year <em>(optional)</em></span>
+          <label class="field"><span>Increase / yr <em>(optional)</em></span>
             <div class="pct"><input id="contribGrowth" type="number" step="0.1" value="0"><i>%</i></div>
           </label>
         </div>
@@ -55,31 +57,45 @@
             <label>Start <input id="contribStartYearNum" type="number" step="1" aria-label="Contribution start year (number)"></label>
             <label>End <input id="contribEndYearNum" type="number" step="1" aria-label="Contribution end year (number)"></label>
           </div>
-          <small class="hint">Scale runs from today to your target retirement year. Contributions start in the start year and stop at the start of the end year; the pot coasts outside the window. Drag an end all the way across to make the window empty.</small>
-        </div>
-        <h3 class="fieldset-sub">In retirement <em>(optional)</em></h3>
-        <div class="field-row">
-          <label class="field"><span>Other income — pension / Social Security <em>(today's $/mo, inflation-indexed)</em></span>
-            <div class="money"><i>$</i><input id="otherIncome" type="text" inputmode="decimal" value="0"></div>
-          </label>
-          <label class="field"><span>Other income starts in year <em>(for Social Security start of withdrawals year)</em></span>
-            <input id="otherIncomeStartYear" type="number" step="1" placeholder="At retirement">
-            <small class="hint" id="otherIncomeStartHint"></small>
-          </label>
-          <label class="field"><span>Desired amount to be left at the end <em>(today's $ — cushion after the final retirement year)</em></span>
-            <div class="money"><i>$</i><input id="desiredEndAmount" type="text" inputmode="decimal" value="0"></div>
-            <small class="hint">Sustainable spending is solved to leave at least this much (in today's purchasing power) when retirement ends, instead of running to $0.</small>
-          </label>
-          <label class="field"><span>Spending you'd like <em>(today's $/mo — to check if it lasts)</em></span>
-            <div class="money"><i>$</i><input id="desiredSpend" type="text" inputmode="decimal" placeholder="Leave blank — we'll solve for you"></div>
-          </label>
+          <small class="hint">Scale runs from today to retirement. The pot compounds without contributions outside this window.</small>
         </div>
       </fieldset>
 
-
-      <div class="plan-col">
       <fieldset>
-        <legend>Assumptions</legend>
+        <legend>2 · Retirement income &amp; goals <em>(optional)</em></legend>
+        <div class="field-row">
+          <label class="field"><span>Other income <em>(today's $/mo)</em></span>
+            <div class="money"><i>$</i><input id="otherIncome" type="text" inputmode="decimal" value="0"></div>
+          </label>
+          <label class="field"><span>Income starts <em>(year)</em></span>
+            <input id="otherIncomeStartYear" type="number" step="1" placeholder="At retirement">
+            <small class="hint" id="otherIncomeStartHint"></small>
+          </label>
+          <label class="field"><span>End cushion <em>(today's $)</em></span>
+            <div class="money"><i>$</i><input id="desiredEndAmount" type="text" inputmode="decimal" value="0"></div>
+            <small class="hint">Reserved in today's purchasing power after the final retirement year.</small>
+          </label>
+          <label class="field"><span>Target spending <em>($/mo)</em></span>
+            <div class="money"><i>$</i><input id="desiredSpend" type="text" inputmode="decimal" placeholder="Optional — we solve"></div>
+            <small class="hint">Enter an amount to test longevity or back-solve your savings.</small>
+          </label>
+        </div>
+        <div class="solver" id="backfillRow" hidden>
+          <div class="solver-head"><strong>Gap solver</strong><span>Adjust your plan to fund this target spending</span></div>
+          <div class="backfill">
+            <div class="field"><span>Back-fill by adjusting</span>
+              <div class="toggle backfill-toggle" role="group" aria-label="Back-fill by adjusting">
+                <button type="button" id="backfillMonthly" class="active">Monthly contributions</button><button type="button" id="backfillSavings">Current savings</button>
+              </div>
+            </div>
+            <button type="button" id="backfillBtn" class="btn backfill-btn">Back-fill to fund this spending</button>
+            <small class="hint" id="backfillHint"></small>
+          </div>
+        </div>
+      </fieldset>
+
+      <fieldset>
+        <legend>3 · Market &amp; horizon assumptions</legend>
         <div class="presets" role="group" aria-label="Growth presets">
           <button type="button" data-preset="3,2,6,5">Conservative 3%</button>
           <button type="button" data-preset="5,3.5,10,7">Balanced 5%</button>
@@ -87,96 +103,63 @@
           <button type="button" data-preset="9,5,18,11">Optimistic 9%</button>
         </div>
         <div class="field-row">
-          <label class="field"><span>Investment growth before retirement</span>
+          <label class="field"><span>Growth pre-retirement</span>
             <div class="pct"><input id="returnBefore" type="number" step="0.1" value="7"><i>% / yr</i></div>
           </label>
-          <label class="field"><span>Growth in retirement <em>(usually lower)</em></span>
+          <label class="field"><span>Growth in retirement</span>
             <div class="pct"><input id="returnAfter" type="number" step="0.1" value="4.5"><i>% / yr</i></div>
           </label>
-          <label class="field"><span>Volatility before retirement</span>
+          <label class="field"><span>Volatility pre-retire <em>(σ)</em></span>
             <div class="pct"><input id="volBefore" type="number" step="0.5" value="14"><i>% / yr</i></div>
-            <small class="hint">How much returns swing around the growth rate above, year to year. Used only by the Monte Carlo check below.</small>
           </label>
-          <label class="field"><span>Volatility in retirement</span>
+          <label class="field"><span>Volatility in retire <em>(σ)</em></span>
             <div class="pct"><input id="volAfter" type="number" step="0.5" value="9"><i>% / yr</i></div>
-            <small class="hint">How much returns swing around the growth rate above, year to year. Used only by the Monte Carlo check below.</small>
           </label>
-          </label>
+        </div>
+        <small class="hint field-group-hint">Volatility controls how much annual returns swing around the growth rates above in the Monte Carlo stress test.</small>
+        <div class="field-row">
           <label class="field"><span>Inflation</span>
             <div class="pct"><input id="inflation" type="number" step="0.1" value="2.5"><i>% / yr</i></div>
           </label>
-          <label class="field"><span>Years spent in retirement</span>
-            <div class="slider-row"><input id="retireYears" type="range" min="5" max="50" step="1" value="30"><output id="retireYearsOut">30 yrs</output></div>
+          <label class="field"><span>MC success target</span>
+            <div class="pct"><input id="mcSuccessTarget" type="number" step="1" min="1" max="99" value="85"><i>%</i></div>
           </label>
         </div>
-        <label class="field"><span>Monte Carlo success target <em>(for “Spending at …% success”)</em></span>
-          <div class="pct"><input id="mcSuccessTarget" type="number" step="1" min="1" max="99" value="85"><i>%</i></div>
-          <small class="hint">The Monte Carlo card reports the monthly spending that would have lasted in this share of simulated paths. Higher = more cautious.</small>
+        <label class="field"><span>Years spent in retirement</span>
+          <div class="slider-row"><input id="retireYears" type="range" min="5" max="50" step="1" value="30"><output id="retireYearsOut">30 yrs</output></div>
         </label>
       </fieldset>
-      <fieldset class="solver" id="backfillRow" hidden>
-        <legend>Solver</legend>
-        <div class="backfill">
-          <div class="field"><span>Back-fill by adjusting</span>
-            <div class="toggle backfill-toggle" role="group" aria-label="Back-fill by adjusting">
-              <button type="button" id="backfillMonthly" class="active">Monthly contributions</button><button type="button" id="backfillSavings">Current savings</button>
-            </div>
-          </div>
-          <button type="button" id="backfillBtn" class="btn backfill-btn">Back-fill to fund this spending</button>
-          <small class="hint" id="backfillHint"></small>
-        </div>
-      </fieldset>
-      </div>
     </div>
     <p class="warn" id="warn" hidden></p>
-    <p class="fineprint">Assumes contributions &amp; spending at the start of each month, monthly compounding, constant returns/inflation for the headline result (the Monte Carlo card varies returns randomly). Gross of tax &amp; fees — illustration, not financial advice. Everything runs in your browser; nothing is sent anywhere.</p>
+    <p class="fineprint">Assumes contributions &amp; spending at the start of each month, monthly compounding, constant returns/inflation for the headline result (Monte Carlo varies returns randomly). Gross of tax &amp; fees — illustration, not financial advice. Everything runs in your browser.</p>
   </form>
 
   <section class="results">
+    <!-- Act I: The Verdict -->
     <div class="verdict card" aria-live="polite">
-      <p class="eyebrow">You could spend, inflation-adjusted, for <span id="vYears"></span> years</p>
-      <p class="big"><span id="spendMonth">—</span><small> / month</small></p>
-      <p class="sub"><span id="spendYear">—</span>/yr in <strong>today's dollars</strong> · first retirement year actually pays <span id="spendFirst">—</span>/mo (future $)</p>
-      <div class="verdict-grid">
-        <div><span>Portfolio must fund</span><strong id="portfolioSpend">—</strong><small id="portfolioSpendNote">/mo today-$</small></div>
-        <div><span>+ other income</span><strong id="otherSpend">—</strong><small id="otherSpendNote">/mo today-$</small></div>
-        <div><span>Implied withdrawal rate</span><strong id="swr">—</strong><small>of pot at retirement</small></div>
+      <div class="verdict-main">
+        <div class="verdict-lead">
+          <p class="eyebrow">Sustainable spending for <span id="vYears"></span> years of retirement</p>
+          <p class="big"><span id="spendMonth">—</span><small> / month</small></p>
+          <p class="sub"><span id="spendYear">—</span>/yr in <strong>today's dollars</strong> · first retirement year pays <span id="spendFirst">—</span>/mo (future $)</p>
+        </div>
+        <div class="verdict-grid">
+          <div><span>Portfolio funds</span><strong id="portfolioSpend">—</strong><small id="portfolioSpendNote">/mo today-$</small></div>
+          <div><span>+ other income</span><strong id="otherSpend">—</strong><small id="otherSpendNote">/mo today-$</small></div>
+          <div><span>Withdrawal rate</span><strong id="swr">—</strong><small>of pot at retirement</small></div>
+        </div>
       </div>
       <p class="desired" id="desiredOut" hidden></p>
       <p class="desired" id="endAmountOut" hidden></p>
     </div>
 
-    <div class="card scenarios">
-      <h2>What if average returns are permanently higher/lower?</h2>
-      <div class="scen-grid">
-        <div><span>Returns −2%/yr</span><strong id="scenLow">—</strong><small>/mo today-$</small><div class="bar"><i id="scenLowBar"></i></div></div>
-        <div class="base"><span>Your assumptions</span><strong id="scenBase">—</strong><small>/mo today-$</small><div class="bar"><i id="scenBaseBar"></i></div></div>
-        <div><span>Returns +2%/yr</span><strong id="scenHigh">—</strong><small>/mo today-$</small><div class="bar"><i id="scenHighBar"></i></div></div>
-      </div>
-      <p class="fineprint">Both growth rates shifted together for the whole plan; inflation unchanged. This shifts the assumption itself — the Monte Carlo card below instead varies year-to-year timing around it. Don’t stack both pessimisms: the −2%/yr figure is already the middle path under worse returns. A plan that only works at +2% is fragile.</p>
-    </div>
-    <div class="card monte">
-      <h2>Monte Carlo — what if returns vary year by year?</h2>
-      <div class="scen-grid">
-        <div><span id="mcSuccessLabel">Chance the headline spending lasts</span><strong id="mcSuccess">—</strong><small id="mcSuccessNote">of 1,000 simulated paths</small></div>
-        <div><span id="mcSpendLabel">Spending at 85% success</span><strong id="mcSpendTarget">—</strong><small>/mo in today's $</small></div>
-        <div><span>Median pot left at the end</span><strong id="mcMedianEnd">—</strong><small id="mcMedianEndNote">in today's $</small></div>
-      </div>
-      <p class="mc-note" id="mcDesiredOut" hidden></p>
-      <div class="mc-chart-wrap"><svg id="mcChart" role="img" aria-label="Histogram of sustainable monthly spending across 1,000 simulated Monte Carlo paths"></svg><div id="mcTooltip" class="tooltip" hidden></div><p class="mc-chart-cap" id="mcChartCap">Distribution of the monthly spending each simulated path could sustain — bars left of the headline line are paths where it runs short.</p></div>
-      <p class="fineprint">1,000 simulated market paths: monthly returns are drawn at random with the volatility (σ) you set, calibrated so the <em>median</em> path compounds at exactly your growth rates — the deterministic answer above is the middle path, not a promise. “Success” means the pot funds the spending for the full retirement (and keeps any end cushion). Random draws have no memory and no fat tails, so treat the odds as a stress lens, not a guarantee.</p>
-    </div>
-
-
-    <div class="stat-grid">
-      <div class="card stat"><span>Pot at retirement</span><strong id="potFuture">—</strong><small id="potToday"></small></div>
-      <div class="card stat"><span>You put in (total)</span><strong id="putIn">—</strong><small id="putInDetail"></small></div>
-      <div class="card stat"><span>Growth does the rest</span><strong id="growthEarned">—</strong><small>by retirement day</small></div>
-      <div class="card stat"><span>Inflation bite</span><strong id="inflBite">—</strong><small id="inflBiteDetail"></small></div>
-    </div>
-
-    <div class="card chart-card">
-      <div class="chart-head"><h2>Balance over time</h2>
+    <!-- Act II: How Your Plan Unfolds -->
+    <div class="card journey-card">
+      <div class="section-intro">
+        <div>
+          <span class="step-tag">The Journey</span>
+          <h2>How your savings build, coast, and fund retirement</h2>
+        </div>
         <div class="chart-toggles">
           <div class="toggle" role="group" aria-label="Chart view">
             <button type="button" id="viewBalance" class="active">Balance</button><button type="button" id="viewComposition">What built it</button>
@@ -186,10 +169,58 @@
           </div>
         </div>
       </div>
+
+      <div class="timeline" id="timeline" aria-label="Your timeline"></div>
+
+      <div class="stat-grid">
+        <div class="stat"><span>Pot at retirement</span><strong id="potFuture">—</strong><small id="potToday"></small></div>
+        <div class="stat"><span>You put in (total)</span><strong id="putIn">—</strong><small id="putInDetail"></small></div>
+        <div class="stat"><span>Compounding adds</span><strong id="growthEarned">—</strong><small>by retirement day</small></div>
+        <div class="stat"><span>Inflation bite</span><strong id="inflBite">—</strong><small id="inflBiteDetail"></small></div>
+      </div>
+
       <div class="chart-wrap"><div id="chart"></div><div id="tooltip" class="tooltip" hidden></div></div>
       <div class="legend"><span class="lg" data-series="bal"><i class="sw accum"></i>Saving / coasting</span><span class="lg" data-series="bal"><i class="sw draw"></i>Spending</span><span class="lg" data-series="cum" title="Click to show/hide"><i class="sw contrib"></i>Contributed (cumulative) ⤢</span><span id="legendGrowth" hidden><i class="sw growth"></i>Growth on top of contributions</span><span class="lg" data-series="mc" title="Click to show/hide"><i class="sw mcband"></i>Monte Carlo 10th–90th pct ⤢</span><span class="lg" data-series="mc"><i class="sw mcmed"></i>Monte Carlo median</span></div>
     </div>
 
+    <!-- Act III: Stress-Testing the Plan -->
+    <div class="card risk-card">
+      <div class="section-intro">
+        <div>
+          <span class="step-tag">Stress Test</span>
+          <h2>How resilient is this spending against market uncertainty?</h2>
+        </div>
+      </div>
+
+      <div class="risk-split">
+        <div class="risk-block scenarios">
+          <div class="risk-block-head">
+            <h3>1. What if average returns are permanently higher or lower?</h3>
+            <p>Shifts both growth rates by ±2%/yr for the entire plan (inflation unchanged). Tests whether your return assumption itself is too optimistic.</p>
+          </div>
+          <div class="scen-grid">
+            <div><span>Returns −2%/yr</span><strong id="scenLow">—</strong><small>/mo today-$</small><div class="bar"><i id="scenLowBar"></i></div></div>
+            <div class="base"><span>Your assumptions</span><strong id="scenBase">—</strong><small>/mo today-$</small><div class="bar"><i id="scenBaseBar"></i></div></div>
+            <div><span>Returns +2%/yr</span><strong id="scenHigh">—</strong><small>/mo today-$</small><div class="bar"><i id="scenHighBar"></i></div></div>
+          </div>
+        </div>
+
+        <div class="risk-block monte">
+          <div class="risk-block-head">
+            <h3>2. Monte Carlo — what if returns arrive in a bad sequence?</h3>
+            <p>Keeps your average return, but randomizes year-to-year swings across 1,000 simulated market paths using your volatility (σ).</p>
+          </div>
+          <div class="scen-grid">
+            <div><span id="mcSuccessLabel">Chance the headline spending lasts</span><strong id="mcSuccess">—</strong><small id="mcSuccessNote">of 1,000 simulated paths</small></div>
+            <div class="cautious"><span id="mcSpendLabel">Spending at 85% success</span><strong id="mcSpendTarget">—</strong><small>/mo in today's $</small></div>
+            <div><span>Median pot left at the end</span><strong id="mcMedianEnd">—</strong><small id="mcMedianEndNote">in today's $</small></div>
+          </div>
+          <p class="mc-note" id="mcDesiredOut" hidden></p>
+          <div class="mc-chart-wrap"><svg id="mcChart" role="img" aria-label="Histogram of sustainable monthly spending across 1,000 simulated Monte Carlo paths"></svg><div id="mcTooltip" class="tooltip" hidden></div><p class="mc-chart-cap" id="mcChartCap">Distribution of the monthly spending each simulated path could sustain — bars left of the headline line are paths where it runs short.</p></div>
+        </div>
+      </div>
+      <p class="fineprint risk-foot">The deterministic headline is calibrated to be the <em>median</em> Monte Carlo path (~50% success with no cushion). Don't stack both pessimisms: the −2%/yr scenario is already the middle path under permanently worse returns, whereas the Monte Carlo target protects against bad sequence-of-returns timing around your baseline.</p>
+    </div>
   </section>
 </main>
 <footer>Runs 100% client-side · Your inputs persist only in this browser (localStorage) and in share links you create.</footer>

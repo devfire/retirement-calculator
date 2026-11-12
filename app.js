@@ -555,14 +555,14 @@ function drawChart(animate = true){
 function drawMcChart(MC, R, animate = true){
   if (!window.d3) return;
   if (MC && R) lastMcVis = { MC, R }; if (!MC) lastMcVis = null;
-  const svgEl = $("mcChart"), wrapEl = svgEl.parentElement, W = wrapEl.clientWidth || 600, H = 190;
+  const svgEl = $("mcChart"), wrapEl = svgEl.parentElement, W = svgEl.clientWidth || wrapEl.clientWidth || 600, H = 190;
   const svg = d3.select(svgEl).attr("width", W).attr("height", H);
   if (!MC || !MC.sMax){ svg.selectAll("*").remove(); svg.append("text").attr("x", 8).attr("y", 24).attr("class", "mc-wait").text("Calculating 1,000 simulated paths…"); return; }
   const vals = MC.sMax.map(v => Number.isFinite(v) ? Math.max(0, v) : 0);
   const desiredSpend = Number.isFinite(R.san.desiredSpend) ? Math.max(0, R.san.desiredSpend) : null;
   const testSpend = desiredSpend ?? R.totalSpendToday;
   const cap = Math.max(d3.quantile(vals.slice().sort(d3.ascending), .99) || 1, R.totalSpendToday, testSpend, MC.spendAtTarget, 1);
-  const m = { l: 34, r: 12, t: 20, b: 26 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
+  const m = { l: 34, r: 22, t: 20, b: 26 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
   const x = d3.scaleLinear().domain([0, cap]).range([m.l, m.l + iw]);
   const bins = d3.bin().domain(x.domain()).thresholds(36)(vals.map(v => Math.min(v, cap)));
   const y = d3.scaleLinear().domain([0, d3.max(bins, d => d.length) || 1]).range([m.t + ih, m.t]).nice();
