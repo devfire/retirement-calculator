@@ -69,9 +69,13 @@ them individually afterwards.
 - **Headline sustainable spending** — level monthly amount, in today's dollars,
   that exactly funds your chosen retirement length; also shown per year and
   as the inflated amount the first retirement year actually pays.
-- **Sensitivity strip** — the same answer if both growth rates were 2%/yr
-  lower or higher (defaults: $4,289 / $6,768 / $10,314 per month). A plan that
-  only works in the +2% column is fragile.
+- **Sensitivity strip** — “What if average returns are permanently
+  higher/lower?”: the same answer if both growth rates were 2%/yr
+  lower or higher for the whole plan (defaults: $4,289 / $6,768 / $10,314 per month). This
+  shifts the return assumption itself, unlike Monte Carlo below, which
+  varies year-to-year timing around it — don’t stack the −2% column with
+  the Monte Carlo cautious spending, since it is already the middle path
+  under worse returns. A plan that only works in the +2% column is fragile.
 - **Pot at retirement** in future dollars and today's dollars, what you put
   in, what growth added, and the **inflation bite** (purchasing power lost
   while waiting to retire).
