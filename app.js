@@ -282,6 +282,11 @@ function tweenMoney(el, value){
     .tween("text", () => { const i = d3.interpolateNumber(prev, value); return t => { el.textContent = fmt.format(i(t)); }; })
     .on("end", () => { el.textContent = fmt.format(value); });
 }
+/** Spend the Monte Carlo lead metric tests: the desired spend when one is
+ *  entered (that's the question the user asked), else the headline spend. */
+function mcTestSpend(R){
+  return Number.isFinite(R.san.desiredSpend) ? Math.max(0, R.san.desiredSpend) : R.totalSpendToday;
+}
 function applyMonteCarlo(MC, R, v){
   if (!MC){
     $("mcSuccessLabel").textContent = "Chance the headline spending lasts";
@@ -294,24 +299,22 @@ function applyMonteCarlo(MC, R, v){
     drawMcChart(null, null, false);
     return;
   }
-  $("mcSuccessLabel").textContent = `Chance ${fmt.format(R.totalSpendToday)}/mo lasts ${v.retireYears} yrs`;
-  $("mcSuccess").textContent = Math.round(MC.success * 100) + "%";
+  const hasDesired = MC.successDesired !== null, testSpend = mcTestSpend(R);
+  $("mcSuccessLabel").textContent = `Chance ${fmt.format(testSpend)}/mo lasts ${v.retireYears} yrs`;
+  $("mcSuccess").textContent = Math.round((hasDesired ? MC.successDesired : MC.success) * 100) + "%";
   $("mcSuccessNote").textContent = `of ${MC.trials.toLocaleString()} simulated paths`;
   $("mcSpend85").textContent = fmt.format(MC.spend85);
   $("mcMedianEnd").textContent = fmt.format(MC.medianEndToday);
   $("mcMedianEndNote").textContent = `in today's $ · headline spend is solved to end near $0 · 10th pct leaves ${fmt.format(MC.p10EndToday)}`;
   const dMC = $("mcDesiredOut");
-  if (MC.successDesired !== null){
+  if (hasDesired){
     dMC.hidden = false;
-    const pct = Math.round(MC.successDesired * 100);
-    dMC.textContent = MC.successDesired >= .999
-      ? `✅ Your desired ${fmt.format(v.desiredSpend)}/mo lasted in essentially all ${MC.trials.toLocaleString()} simulated paths — market swings at this volatility don't break it.`
-      : `🎲 Your desired ${fmt.format(v.desiredSpend)}/mo (today's $) lasted the full ${v.retireYears} years in ${pct}% of simulated paths. Spending ${fmt.format(MC.spend85)}/mo would have lasted in 85%.`;
+    dMC.textContent = `For comparison, the headline ${fmt.format(R.totalSpendToday)}/mo lasted in ${Math.round(MC.success * 100)}% of simulated paths. Spending ${fmt.format(MC.spend85)}/mo would have lasted in 85%.`;
   } else dMC.hidden = true;
   drawMcChart(MC, R, true);
 }
 function showMonteCarloPending(R, v){
-  $("mcSuccessLabel").textContent = `Chance ${fmt.format(R.totalSpendToday)}/mo lasts ${v.retireYears} yrs`;
+  $("mcSuccessLabel").textContent = `Chance ${fmt.format(mcTestSpend(R))}/mo lasts ${v.retireYears} yrs`;
   $("mcSuccess").textContent = "…";
   $("mcSuccessNote").textContent = "calculating…";
   $("mcSpend85").textContent = "…";
@@ -552,7 +555,9 @@ function drawMcChart(MC, R, animate = true){
   const svg = d3.select(svgEl).attr("width", W).attr("height", H);
   if (!MC || !MC.sMax){ svg.selectAll("*").remove(); svg.append("text").attr("x", 8).attr("y", 24).attr("class", "mc-wait").text("Calculating 1,000 simulated paths…"); return; }
   const vals = MC.sMax.map(v => Number.isFinite(v) ? Math.max(0, v) : 0);
-  const cap = Math.max(d3.quantile(vals.slice().sort(d3.ascending), .99) || 1, R.totalSpendToday, MC.spend85, 1);
+  const desiredSpend = Number.isFinite(R.san.desiredSpend) ? Math.max(0, R.san.desiredSpend) : null;
+  const testSpend = desiredSpend ?? R.totalSpendToday;
+  const cap = Math.max(d3.quantile(vals.slice().sort(d3.ascending), .99) || 1, R.totalSpendToday, testSpend, MC.spend85, 1);
   const m = { l: 34, r: 12, t: 20, b: 26 }, iw = W - m.l - m.r, ih = H - m.t - m.b;
   const x = d3.scaleLinear().domain([0, cap]).range([m.l, m.l + iw]);
   const bins = d3.bin().domain(x.domain()).thresholds(36)(vals.map(v => Math.min(v, cap)));
@@ -564,17 +569,23 @@ function drawMcChart(MC, R, animate = true){
   const tip = $("mcTooltip");
   svg.selectAll("rect.bin").data(bins).join("rect").attr("class", "bin")
     .attr("x", d => x(d.x0) + 1).attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 1))
-    .attr("fill", d => d.x1 <= R.totalSpendToday ? "rgba(196,85,59,.65)" : "rgba(14,122,95,.75)")
+    .attr("fill", d => d.x1 <= testSpend ? "rgba(196,85,59,.65)" : "rgba(14,122,95,.75)")
     .on("mousemove", function(event, d){ tip.hidden = false; tip.textContent = `${compact(d.x0)}–${compact(d.x1)}/mo\n${d.length} paths (${(d.length/vals.length*100).toFixed(1)}%)`; const r = wrapEl.getBoundingClientRect(); tip.style.left = Math.min(event.clientX - r.left + 12, r.width - 150) + "px"; tip.style.top = "8px"; })
     .on("mouseleave", () => { tip.hidden = true; })
     .transition(tr).attr("y", d => y(d.length)).attr("height", d => y(0) - y(d.length));
-  const marker = (cls, val, label, dash, anchor) => {
+  const marker = (cls, val, label, dash, anchor, labelDy = 4) => {
     const g = svg.selectAll("g." + cls).data(val <= cap ? [val] : []).join("g").attr("class", cls);
     g.selectAll("line").data([null]).join("line").transition(tr).attr("x1", x(val)).attr("x2", x(val)).attr("y1", m.t).attr("y2", m.t + ih).attr("stroke", "#17211b").attr("stroke-width", 1.5).attr("stroke-dasharray", dash);
-    g.selectAll("text").data([null]).join("text").attr("class", "mc-mark-label").attr("text-anchor", anchor).transition(tr).attr("x", x(val) + (anchor === "end" ? -5 : 5)).attr("y", m.t + 4).text(label);
+    g.selectAll("text").data([null]).join("text").attr("class", "mc-mark-label").attr("text-anchor", anchor).transition(tr).attr("x", x(val) + (anchor === "end" ? -5 : 5)).attr("y", m.t + labelDy).text(label);
   };
   marker("mark-head", R.totalSpendToday, `Headline ${compact(R.totalSpendToday)}`, "none", R.totalSpendToday > cap * .7 ? "end" : "start");
+  if (desiredSpend !== null && Math.abs(desiredSpend - R.totalSpendToday) > 1)
+    marker("mark-desired", desiredSpend, `Desired ${compact(desiredSpend)}`, "2 3", desiredSpend > cap * .7 ? "end" : "start", 17);
+  else svg.selectAll("g.mark-desired").remove();
   marker("mark-85", MC.spend85, `85% ${compact(MC.spend85)}`, "5 4", MC.spend85 > cap * .7 ? "end" : "start");
+  $("mcChartCap").textContent = desiredSpend !== null
+    ? "Distribution of the monthly spending each simulated path could sustain — bars left of the desired line are paths where your desired spending runs short."
+    : "Distribution of the monthly spending each simulated path could sustain — bars left of the headline line are paths where it runs short.";
 }
 $("basisToday").onclick = () => { basis="today"; $("basisToday").classList.add("active"); $("basisNominal").classList.remove("active"); drawChart(); };
 $("basisNominal").onclick = () => { basis="nominal"; $("basisNominal").classList.add("active"); $("basisToday").classList.remove("active"); drawChart(); };

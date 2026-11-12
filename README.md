@@ -83,16 +83,19 @@ them individually afterwards.
   that stacks contributions vs. growth up to the balance line.
 - **Monte Carlo card** — 1,000 simulated market paths with randomly varying
   monthly returns: the chance the headline spending lasts the full
-  retirement, the spending that would have lasted in 85% of paths, the
-  median pot left, and — if you entered "Spending you'd like" — that
-  spending's success rate too. The balance chart gains a 10th–90th
+  retirement, the spending that would have lasted in 85% of paths, and the
+  median pot left. If you entered "Spending you'd like", the lead chance
+  instead tests that desired spending (the headline's chance is shown for
+  comparison), so the big percentage always answers the amount you asked
+  about. The balance chart gains a 10th–90th
   percentile band and a simulated-median line (hover for values). With the
   defaults the headline $5,620/mo (no contributions) lasts in ~47% of
   paths: the deterministic answer is calibrated to be the *median* path,
   so treat it as a coin-flip plan and the 85%-success spending
   (~$3,200/mo) as the cautious one. A **histogram** under the card shows the
   full distribution of sustainable spending across the 1,000 paths — red bars
-  are paths where the headline spending runs short — with headline and
+  are paths where the tested spending (your desired spending when entered,
+  else the headline) runs short — with headline, desired (when entered), and
   85%-success markers (hover for path counts). The headline number itself
   animates to its new value when inputs change.
 
