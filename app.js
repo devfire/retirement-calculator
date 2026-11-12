@@ -530,6 +530,13 @@ function scheduleMonteCarlo(R, v, job){
 /** Sync the dual-thumb contribution window to the sanitized plan: scale is
  *  today → retirement, thumbs and number boxes show the clamped [start, end). */
 function syncContributionWindow(R){
+  // While the retirement year is being retyped, intermediate values ("2", "20", blank)
+  // read as retiring now. Rescaling the range inputs then lets the browser clamp the
+  // stored window to nowYear, and save() persists the loss. Leave the inputs untouched
+  // until a complete in-range year is entered, or the field commits (change -> render).
+  const retireEl = $("retireYear"), rawYear = retireEl.value.trim(), yearNum = Number(rawYear);
+  const completeYear = /^\d{4}$/.test(rawYear) && yearNum >= nowYear && yearNum <= nowYear + 60;
+  if (document.activeElement === retireEl && !completeYear) return;
   const s = R.san.contribStartYear, e = R.san.contribEndYear, span = Math.max(1, R.retireYearEff - nowYear);
   for (const id of ["contribStartYear","contribEndYear","contribStartYearNum","contribEndYearNum"]){
     const el = $(id); el.min = nowYear; el.max = R.retireYearEff; el.disabled = R.yrs === 0;
@@ -867,4 +874,6 @@ $("contribStartYear").style.zIndex = 3; $("contribEndYear").style.zIndex = 4;
 $("form").addEventListener("input", e => { adoptShared(); if (["currentSavings","monthlyContribution","desiredSpend"].includes(e.target.id)) stickySolve = false; render(); });
 addEventListener("resize", () => { drawChart(false); if (lastMcVis) drawMcChart(lastMcVis.MC, lastMcVis.R, false); });
 $("retireYear").max = nowYear + 60;
+// Commit (blur/Enter) applies any clamp deferred while the year was being retyped.
+$("retireYear").addEventListener("change", render);
 load(); render();
